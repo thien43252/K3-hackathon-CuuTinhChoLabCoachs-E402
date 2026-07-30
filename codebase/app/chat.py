@@ -16,7 +16,7 @@ from tools import TOOL_FUNCTIONS, load_tool_declarations, to_openai_tools
 
 ROOT = Path(__file__).parent
 ARTIFACTS_DIR = ROOT / "prompt"
-load_lab_env(ROOT)
+load_lab_env(ROOT.parent)
 
 
 def now_iso() -> str:

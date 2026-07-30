@@ -1,79 +1,18 @@
 from __future__ import annotations
 
-import json
 import os
 from typing import Any
-
-from providers.base import ModelResponse, ToolCall
-
-
-def _to_gemini_declarations(tools: list[dict[str, Any]] | None) -> list[dict[str, Any]]:
-    declarations: list[dict[str, Any]] = []
-    for item in tools or []:
-        function = item.get("function", item)
-        declarations.append({
-            "name": function["name"],
-            "description": function.get("description", ""),
-            "parameters": function.get("parameters", {"type": "object", "properties": {}}),
-        })
-    return declarations
-
-
-def _to_gemini_contents(messages: list[dict[str, str]]) -> tuple[str | None, list[dict[str, Any]]]:
-    system_parts: list[str] = []
-    contents: list[dict[str, Any]] = []
-    for msg in messages:
-        role = msg.get("role")
-        content = msg.get("content", "")
-        if role == "system":
-            system_parts.append(content)
-        elif role == "assistant":
-            contents.append({"role": "model", "parts": [{"text": content}]})
-        elif role == "user":
-            contents.append({"role": "user", "parts": [{"text": content}]})
-    return ("\n\n".join(system_parts) if system_parts else None), contents
-
-
-def _part_text(part: Any) -> str | None:
-    if hasattr(part, "text"):
-        return getattr(part, "text")
-    if isinstance(part, dict):
-        return part.get("text")
-    return None
-
-
-def _part_function_call(part: Any) -> Any | None:
-    if hasattr(part, "function_call"):
-        return getattr(part, "function_call")
-    if isinstance(part, dict):
-        return part.get("function_call")
-    return None
-
-
-def _function_call_name(call: Any) -> str | None:
-    if hasattr(call, "name"):
-        return getattr(call, "name")
-    if isinstance(call, dict):
-        return call.get("name")
-    return None
-
-
-def _function_call_args(call: Any) -> dict[str, Any]:
-    if hasattr(call, "args"):
-        return dict(getattr(call, "args") or {})
-    if isinstance(call, dict):
-        return dict(call.get("args") or {})
-    return {}
+from .base import ModelResponse, ToolCall
 
 
 class GeminiProvider:
-    """Google Gemini API provider with normalized tool_calls output."""
+    """Gemini API provider using google-generativeai with normalized tool_calls output."""
 
     def __init__(
         self,
         *,
         api_key_env: str = "GEMINI_API_KEY",
-        default_model: str = "gemini-3.5-flash",
+        default_model: str = "gemini-2.5-flash",
     ) -> None:
         self.api_key_env = api_key_env
         self.default_model = default_model
@@ -88,58 +27,80 @@ class GeminiProvider:
         tool_choice: Any | None = None,
     ) -> ModelResponse:
         try:
-            from google import genai
-            from google.genai import types
+            import google.generativeai as genai
         except ImportError as exc:
-            raise RuntimeError("Install live provider dependency first: pip install google-genai") from exc
+            raise RuntimeError(
+                "Install live provider dependency first: uv add google-generativeai"
+            ) from exc
 
-        api_key = os.getenv(self.api_key_env)
+        # Lấy API key từ biến môi trường (hỗ trợ GEMINI_API_KEY hoặc GOOGLE_API_KEY)
+        api_key = os.getenv(self.api_key_env) or os.getenv("GOOGLE_API_KEY")
         if not api_key:
-            raise RuntimeError(f"Missing API key env var: {self.api_key_env}")
+            raise RuntimeError(
+                f"Missing API key env var: {self.api_key_env} or GOOGLE_API_KEY"
+            )
 
-        system_instruction, contents = _to_gemini_contents(messages)
-        declarations = _to_gemini_declarations(tools)
-        config_kwargs: dict[str, Any] = {"temperature": temperature}
-        if system_instruction:
-            config_kwargs["system_instruction"] = system_instruction
-        if declarations:
-            config_kwargs["tools"] = [types.Tool(function_declarations=declarations)]
+        genai.configure(api_key=api_key)
 
-        client = genai.Client(api_key=api_key)
-        resp = client.models.generate_content(
-            model=model or self.default_model,
-            contents=contents,
-            config=types.GenerateContentConfig(**config_kwargs),
+        # Chuyển đổi định dạng message từ OpenAI sang Gemini
+        system_instruction = None
+        contents = []
+
+        for msg in messages:
+            role = msg["role"]
+            content = msg["content"]
+            if role == "system":
+                system_instruction = content
+            elif role == "user":
+                contents.append({"role": "user", "parts": [content]})
+            elif role == "assistant":
+                contents.append({"role": "model", "parts": [content]})
+
+        # Chuyển đổi định dạng tools từ OpenAI sang Gemini
+        gemini_tools = None
+        if tools:
+            gemini_tools = []
+            for t in tools:
+                if t.get("type") == "function":
+                    func_decl = t["function"]
+                    # Gemini yêu cầu schema phải đúng chuẩn OpenAPI
+                    gemini_tools.append(func_decl)
+
+        model_name = model or self.default_model
+        
+        # Cấu hình tham số sinh văn bản
+        generation_config = {
+            "temperature": temperature,
+        }
+
+        client = genai.GenerativeModel(
+            model_name=model_name,
+            system_instruction=system_instruction,
+            tools=gemini_tools if gemini_tools else None,
         )
 
-        text_parts: list[str] = []
+        resp = client.generate_content(
+            contents=contents,
+            generation_config=generation_config,
+        )
+
+        # Trích xuất text phản hồi
+        text = None
+        try:
+            text = resp.text
+        except Exception:
+            # Trường hợp resp chỉ chứa tool calls hoặc bị block bởi safety filter
+            if resp.candidates and resp.candidates[0].content.parts:
+                text = resp.candidates[0].content.parts[0].text
+
+        # Trích xuất tool calls nếu có
         calls: list[ToolCall] = []
+        if resp.candidates and resp.candidates[0].content.parts:
+            for part in resp.candidates[0].content.parts:
+                if part.function_call:
+                    func_call = part.function_call
+                    # Chuyển đổi cấu trúc MapComposite sang Python dict chuẩn
+                    args = {k: v for k, v in func_call.args.items()}
+                    calls.append(ToolCall(name=func_call.name, args=args))
 
-        def append_call(function_call: Any) -> None:
-            name = _function_call_name(function_call)
-            if name:
-                calls.append(ToolCall(name=name, args=_function_call_args(function_call)))
-
-        for candidate in getattr(resp, "candidates", []) or []:
-            content = getattr(candidate, "content", None)
-            for part in getattr(content, "parts", []) or []:
-                text = _part_text(part)
-                if text:
-                    text_parts.append(text)
-                function_call = _part_function_call(part)
-                if function_call:
-                    append_call(function_call)
-
-        # Some SDK versions expose function calls directly on the response.
-        for function_call in getattr(resp, "function_calls", []) or []:
-            append_call(function_call)
-
-        deduped_calls: list[ToolCall] = []
-        seen: set[tuple[str, str]] = set()
-        for call in calls:
-            key = (call.name, json.dumps(call.args, ensure_ascii=False, sort_keys=True))
-            if key not in seen:
-                seen.add(key)
-                deduped_calls.append(call)
-
-        return ModelResponse(text="\n".join(part for part in text_parts if part) or None, tool_calls=deduped_calls, raw=resp)
+        return ModelResponse(text=text, tool_calls=calls, raw=resp)
