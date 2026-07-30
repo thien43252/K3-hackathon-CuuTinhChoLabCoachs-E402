@@ -13,6 +13,7 @@ class Settings(BaseSettings):
     model_config = SettingsConfigDict(env_file=ENV_PATH, env_file_encoding="utf-8", extra="ignore")
 
     discord_bot_token: Optional[str] = None
+    google_api_key: Optional[str] = None
     semaphore: Semaphore = Semaphore(1)
 
 
