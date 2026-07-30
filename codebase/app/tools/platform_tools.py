@@ -3,9 +3,10 @@ Module chứa các công cụ Tương tác Nền tảng & Ngữ cảnh (Platform
 Sử dụng CSDL SQLite thực tế (`users`, `rooms`, `messages`).
 Bao gồm:
 4. get_user_context
-5. create_group_room
-6. send_message
-7. send_notification
+5. verify_discord_members
+6. create_group_room
+7. send_message
+8. send_notification
 
 Khi có Discord context (bot đang chạy), các tool này sẽ gọi Discord API thật.
 Khi không có (CLI mode), fallback về mock data.
@@ -26,6 +27,9 @@ class GetUserContextInput(BaseModel):
     user_id: str = Field(..., description="ID người dùng trên hệ thống chat (Slack/Discord/LMS)")
     date: Optional[str] = Field(default=None, description="Ngày làm lab (định dạng YYYY-MM-DD)")
 
+
+class VerifyDiscordMembersInput(BaseModel):
+    member_ids: List[str] = Field(..., description="Danh sách Discord User ID cần kiểm tra")
 
 class CreateGroupRoomInput(BaseModel):
     room_name: str = Field(..., description="Tên room chat cần tạo")
@@ -125,20 +129,20 @@ def get_user_context(
                 }
 
             if discord_full_name:
-                # Discord user thật, chưa có DB → check lab_materials để biết lab nào available
-                available_labs = []
+                # Discord user thật, chưa có DB → tự động tìm lab theo ngày hôm nay
+                today_str = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+                lab_row = None
                 try:
-                    cursor.execute("SELECT lab_id, title FROM lab_materials ORDER BY created_at DESC LIMIT 10")
-                    available_labs = [
-                        {"lab_id": row["lab_id"], "title": row["title"]}
-                        for row in cursor.fetchall()
-                    ]
+                    cursor.execute(
+                        "SELECT lab_id, title, type FROM lab_materials WHERE lab_date <= ? ORDER BY lab_date DESC LIMIT 1",
+                        (today_str,)
+                    )
+                    lab_row = cursor.fetchone()
                 except Exception:
                     pass  # bảng lab_materials có thể chưa tồn tại
                 conn.close()
 
-                if available_labs:
-                    lab_list = "\n".join([f"  • `{lab['lab_id']}` — {lab['title']}" for lab in available_labs])
+                if lab_row:
                     return {
                         "status": "success",
                         "user": {
@@ -146,23 +150,18 @@ def get_user_context(
                             "full_name": discord_full_name,
                             "role": discord_role
                         },
-                        "today_lab": None,
-                        "group_info": None,
-                        "available_labs": available_labs,
-                        "message": f"Bạn chưa được phân công bài lab. Hiện có lab sau:\n{lab_list}\n\nHãy nhờ Admin gán lab cho bạn bằng lệnh `/admin-assign-lab <user_id> <lab_id>` nhé!"
+                        "today_lab": {
+                            "lab_id": lab_row["lab_id"],
+                            "type": lab_row["type"],
+                            "title": lab_row["title"]
+                        },
+                        "group_info": None
                     }
 
-                conn.close()
                 return {
-                    "status": "success",
-                    "user": {
-                        "user_id": user_id,
-                        "full_name": discord_full_name,
-                        "role": discord_role
-                    },
-                    "today_lab": None,
-                    "group_info": None,
-                    "message": "Bạn chưa được phân công bài lab nào. Hãy nhờ Admin đăng ký lab cho bạn nhé!"
+                    "status": "empty",
+                    "error_code": "NO_LAB_TODAY",
+                    "message": "Hôm nay chưa có bài lab nào được lên lịch. Hãy chờ Admin cập nhật lab mới nhé!"
                 }
 
             # Không có Discord, không có DB → insert default Lab
@@ -201,10 +200,30 @@ def get_user_context(
                 "members": members_list if members_list else [user_id]
             }
 
+        # Nếu chưa được gán lab, tự động tìm theo ngày hôm nay
+        today_lab_id = user_row["today_lab_id"]
+        today_lab_type = user_row["today_lab_type"]
+        today_lab_title = user_row["today_lab_title"]
+
+        if not today_lab_id:
+            today_str = date or datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            try:
+                cursor.execute(
+                    "SELECT lab_id, title, type FROM lab_materials WHERE lab_date <= ? ORDER BY lab_date DESC LIMIT 1",
+                    (today_str,)
+                )
+                lab_row = cursor.fetchone()
+                if lab_row:
+                    today_lab_id = lab_row["lab_id"]
+                    today_lab_type = lab_row["type"]
+                    today_lab_title = lab_row["title"]
+            except Exception:
+                pass
+
         today_lab = {
-            "lab_id": user_row["today_lab_id"] or "LAB05_INDIVIDUAL",
-            "type": user_row["today_lab_type"] or "individual",
-            "title": user_row["today_lab_title"] or "Bài lab"
+            "lab_id": today_lab_id or "LAB05_INDIVIDUAL",
+            "type": today_lab_type or "individual",
+            "title": today_lab_title or "Bài lab"
         }
 
         conn.close()
@@ -227,14 +246,96 @@ def get_user_context(
         }
 
 
+def verify_discord_members(member_ids: List[str]) -> Dict[str, Any]:
+    """
+    5. verify_discord_members
+    Mô tả: Kiểm tra danh sách Discord User IDs có tồn tại trên server hay không.
+    KHÔNG tạo room, KHÔNG ghi DB — chỉ kiểm tra và trả về kết quả.
+    Gọi tool này TRƯỚC create_group_room để biết thành viên nào hợp lệ.
+    """
+    try:
+        if not member_ids:
+            return {
+                "status": "empty",
+                "error_code": "INVALID_INPUT",
+                "message": "Danh sách member_ids không được để trống."
+            }
+
+        valid = []
+        invalid = []
+
+        # ── Discord mode (thật) ──
+        ctx = discord_context.get()
+        if ctx and ctx.bot and ctx.guild_id:
+            guild = ctx.bot.get_guild(ctx.guild_id)
+            if not guild:
+                return {
+                    "status": "error",
+                    "error_code": "GUILD_NOT_FOUND",
+                    "message": "Không tìm thấy server Discord."
+                }
+
+            for uid in member_ids:
+                try:
+                    member_id = int(uid) if uid.isdigit() else uid
+                    member = guild.get_member(member_id)
+                    if member:
+                        valid.append({
+                            "user_id": str(member.id),
+                            "name": member.display_name
+                        })
+                    else:
+                        # Thử fetch từ API (không chỉ cache)
+                        try:
+                            fetched = _run_discord_coro(guild.fetch_member(member_id))
+                            if fetched:
+                                valid.append({
+                                    "user_id": str(fetched.id),
+                                    "name": fetched.display_name
+                                })
+                                continue
+                        except Exception:
+                            pass
+                        invalid.append({"user_id": uid, "reason": "Member not in guild"})
+                except (ValueError, TypeError):
+                    invalid.append({"user_id": uid, "reason": "Invalid user ID"})
+        else:
+            # ── Mock/CLI mode ──
+            for uid in member_ids:
+                if uid.startswith("INVALID_") or uid == "U_UNKNOWN":
+                    invalid.append({"user_id": uid, "reason": "User not found"})
+                else:
+                    valid.append({
+                        "user_id": uid,
+                        "name": f"User {uid}"
+                    })
+
+        return {
+            "status": "success" if valid else "empty",
+            "valid_members": valid,
+            "invalid_members": invalid,
+            "total_checked": len(member_ids),
+            "valid_count": len(valid),
+            "invalid_count": len(invalid)
+        }
+    except Exception as e:
+        return {
+            "status": "error",
+            "error_code": "VERIFY_FAILED",
+            "message": f"Không thể kiểm tra thành viên: {str(e)}"
+        }
+
+
 def create_group_room(
     room_name: str,
     member_ids: List[str],
     is_private: bool = True
 ) -> Dict[str, Any]:
     """
-    5. create_group_room
+    6. create_group_room
     Mô tả: Tự động tạo channel/room chat nhóm và ghi nhận thông tin vào SQLite DB.
+    Nên gọi verify_discord_members TRƯỚC để đảm bảo tất cả thành viên hợp lệ.
+    Room được tạo ở chế độ private (chỉ thành viên trong nhóm mới thấy).
     """
     try:
         if not room_name or not room_name.strip() or not member_ids:

@@ -12,6 +12,7 @@ from app.agent.providers import make_provider
 from app.tools import load_tool_declarations, to_openai_tools
 from app.chat import run_model_tool_loop
 from app import discord_context
+from app.core.db import get_db_connection
 
 # Khởi tạo LabContentService (dùng chung toàn bot)
 lab_service = LabContentService()
@@ -106,7 +107,19 @@ async def on_message(message):
                 user_histories[user_id] = user_histories[user_id][-10:]
 
             # Cung cấp ngữ cảnh Discord User ID cho Agent để tự động gọi get_user_context nếu cần
-            discord_ctx_str = f"\n\n[Discord Context - Current User: {message.author.name} (ID: {message.author.id}), Channel: {message.channel.name} (ID: {message.channel.id})]"
+            # Xác định loại kênh: general hay group_room
+            channel_type = "general"
+            try:
+                conn = get_db_connection()
+                cursor = conn.cursor()
+                cursor.execute("SELECT 1 FROM rooms WHERE discord_channel_id = ?", (str(message.channel.id),))
+                if cursor.fetchone():
+                    channel_type = "group_room"
+                conn.close()
+            except Exception:
+                pass
+
+            discord_ctx_str = f"\n\n[Discord Context - Current User: {message.author.name} (ID: {message.author.id}), Channel: {message.channel.name} (ID: {message.channel.id}), Channel Type: {channel_type}]"
 
             messages_to_send = [
                 {"role": "system", "content": f"{system_prompt}{discord_ctx_str}"},
@@ -176,10 +189,11 @@ async def make_plan(interaction: discord.Interaction, lab_number: int):
 @app_commands.describe(
     lab_id="Mã định danh bài Lab (ví dụ: lab5, DAY05)",
     repo_url="Link GitHub của bài Lab (ví dụ: https://github.com/org/repo)",
+    lab_date="Ngày của bài Lab (định dạng YYYY-MM-DD)",
     branch="Nhánh git cần clone (để trống = nhánh mặc định)"
 )
 @app_commands.checks.has_permissions(administrator=True)
-async def admin_add_lab(interaction: discord.Interaction, lab_id: str, repo_url: str, branch: str = None):
+async def admin_add_lab(interaction: discord.Interaction, lab_id: str, repo_url: str, lab_date: str, branch: str = None):
     """Chỉ Admin mới được dùng. Phân tích tài liệu 1 lần duy nhất và lưu vào cache."""
     # Defer để tránh timeout khi clone repo lâu
     await interaction.response.defer(ephemeral=True)
@@ -192,6 +206,42 @@ async def admin_add_lab(interaction: discord.Interaction, lab_id: str, repo_url:
             lambda: lab_service.register_lab(repo_url=repo_url, lab_id=lab_id, branch=branch)
         )
 
+        # Thêm/Cập nhật thông tin vào bảng lab_materials trong SQLite
+        # để get_user_context có thể lấy được lab hôm nay theo lab_date
+        import json
+        from datetime import datetime, timezone
+        title = lab_data["sitemap"][0]["title"] if lab_data.get("sitemap") else f"Bài lab {lab_id}"
+        description = lab_data.get("insights", {}).get("lab_objective", f"Nội dung bài lab {lab_id}")
+        lab_type = "group" if "group" in lab_id.lower() or "group" in repo_url.lower() else "individual"
+        created_at = datetime.now(timezone.utc).isoformat()
+
+        def save_to_db():
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM lab_materials WHERE lab_id = ?", (lab_id,))
+            exists = cursor.fetchone()
+            if exists:
+                cursor.execute(
+                    """
+                    UPDATE lab_materials 
+                    SET title = ?, type = ?, description = ?, codebase_repo_url = ?, lab_date = ?, created_at = ?
+                    WHERE lab_id = ?
+                    """,
+                    (title, lab_type, description, repo_url, lab_date, created_at, lab_id)
+                )
+            else:
+                cursor.execute(
+                    """
+                    INSERT INTO lab_materials (lab_id, title, type, description, lecture_files, codebase_repo_url, created_at, lab_date)
+                    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                    """,
+                    (lab_id, title, lab_type, description, json.dumps([]), repo_url, created_at, lab_date)
+                )
+            conn.commit()
+            conn.close()
+
+        await loop.run_in_executor(None, save_to_db)
+
         # Tạo danh sách file tài liệu tìm được
         sitemap_text = "\n".join(
             [f"  • `{doc['relative_path']}` — {doc['title']}" for doc in lab_data["sitemap"]]
@@ -199,6 +249,7 @@ async def admin_add_lab(interaction: discord.Interaction, lab_id: str, repo_url:
 
         await interaction.followup.send(
             f"✅ **Đã đăng ký thành công Lab `{lab_id}`!**\n"
+            f"📅 Ngày bắt đầu: {lab_date}\n"
             f"🔗 Repo: {repo_url}\n"
             f"📚 Tìm thấy **{lab_data['total_documents']}** tài liệu hướng dẫn:\n"
             f"{sitemap_text}",
