@@ -12,17 +12,17 @@ Tài liệu này mô tả chi tiết tất cả các công cụ (**Tools / APIs*
 | 2 | `codebase_indexer` | Admin & Knowledge | Đánh chỉ mục (index) dữ liệu codebase & bài giảng vào Vector DB / RAG |
 | 3 | `RAG_search` | Admin & Knowledge | Truy vấn tri thức bài giảng, codebase để trả lời câu hỏi |
 | 4 | `get_user_context` | Platform & Context | Lấy thông tin học viên, bài lab được phân công trong ngày & vai trò |
-| 5 | `create_group_room` | Platform & Context | Tự động tạo channel/room chat nhóm và mời các thành viên |
-| 6 | `send_message` | Platform & Context | Gửi tin nhắn trực tiếp (DM) hoặc gửi vào room nhóm |
+| 5 | `create_group_room` | Platform & Context | Tự động tạo Discord Text Channel/Private Thread và phân quyền thành viên |
+| 6 | `send_message` | Platform & Context | Gửi tin nhắn trực tiếp (DM) hoặc gửi vào channel Discord nhóm |
 | 7 | `send_notification` | Platform & Context | Tag tên hoặc gửi thông báo quan trọng đến học viên |
 | 8 | `parse_lab_requirements` | Task Management | Phân tích bài lab nhóm thành các task nhỏ, timeline & checklist |
-| 9 | `assign_task` | Task Management | Lưu trữ và phân công task/checklist cho từng thành viên |
+| 9 | `assign_task` | Task Management | Phân công task, trả về Markdown Checklist cho Discord |
 | 10 | `track_group_progress` | Task Management | Tổng hợp tiến độ công việc nhóm cho Nhóm trưởng |
 | 11 | `generate_reflection` | Task Management | Sinh đánh giá/reflection cá nhân sau khi hoàn thành bài lab |
 | 12 | `schedule_reminder` | Scheduler & Remind | Đặt lịch tự động nhắc nhở tiến độ hoặc deadline |
 | 13 | `extend_deadline` | Scheduler & Remind | Gia hạn / giãn deadline cho task của học viên |
 | 14 | `analyze_student_issue` | Troubleshooting | Phân tích lỗi code / vấn đề học viên gặp phải và đưa ra hướng giải quyết |
-| 15 | `fetch_peer_solution` | Troubleshooting | Lấy bài làm/kết quả task từ thành viên khác trong nhóm để gợi ý tham khảo |
+| 15 | `fetch_peer_solution` | Troubleshooting | Trả về Code Block tham khảo từ thành viên khác trực tiếp trên Discord |
 
 ---
 
@@ -38,7 +38,7 @@ Mô tả: Cho phép Admin thiết lập nội dung bài lab code, bài giảng v
 | `title` | `string` | Có | Tiêu đề bài lab |
 | `type` | `string` | Có | Loại bài lab (`"individual"` hoặc `"group"`) |
 | `description` | `string` | Có | Nội dung mô tả yêu cầu bài lab |
-| `lecture_files` | `array[string]` | Không | Danh sách URL/path tệp bài giảng (PDF, Markdown...) |
+| `lecture_files` | `array[string]` | Không | Danh sách Discord Attachment URLs hoặc đường dẫn tệp bài giảng (PDF, Markdown...) |
 | `codebase_repo_url` | `string` | Không | Đường dẫn kho chứa codebase mẫu (Git repo URL hoặc zip) |
 
 #### Kết quả đầu ra (Output Schema):
@@ -158,7 +158,7 @@ Mô tả: Lấy thông tin chi tiết về người dùng đang gọi bot (Học
 #### Tham số đầu vào (Input Parameters):
 | Tham Số | Kiểu Dữ Liệu | Bắt Buộc | Mô Tả |
 | :--- | :---: | :---: | :--- |
-| `user_id` | `string` | Có | ID người dùng trên hệ thống chat (Slack/Discord/LMS) |
+| `user_id` | `string` | Có | Discord User ID của người dùng |
 | `date` | `string` | Không | Ngày làm lab (định dạng `YYYY-MM-DD`, mặc định: ngày hiện tại) |
 
 #### Kết quả đầu ra (Output Schema):
@@ -202,31 +202,33 @@ Mô tả: Lấy thông tin chi tiết về người dùng đang gọi bot (Học
 ---
 
 ### 5. `create_group_room`
-Mô tả: Tự động tạo channel/room chat nhóm trên nền tảng (Slack/Discord/Teams) và gửi lời mời đến các thành viên.
+Mô tả: Tự động tạo Discord Text Channel hoặc Private Thread riêng và phân quyền cho các thành viên nhóm.
 
 #### Tham số đầu vào (Input Parameters):
 | Tham Số | Kiểu Dữ Liệu | Bắt Buộc | Mô Tả |
 | :--- | :---: | :---: | :--- |
-| `room_name` | `string` | Có | Tên room chat cần tạo (ví dụ: `lab05-group-01`) |
-| `member_ids` | `array[string]` | Có | Danh sách User ID của các thành viên cần thêm vào room |
-| `is_private` | `boolean` | Không | Quyền riêng tư của room (mặc định: `true`) |
+| `room_name` | `string` | Có | Tên channel Discord cần tạo (ví dụ: `lab05-group-01`) |
+| `member_ids` | `array[string]` | Có | Danh sách Discord User ID của các thành viên cần thêm |
+| `is_private` | `boolean` | Không | Quyền riêng tư của channel (mặc định: `true`) |
 
 #### Kết quả đầu ra (Output Schema):
 * **Thành công (`200 OK`)**:
   ```json
   {
     "status": "success",
-    "room_id": "C99887766",
-    "room_name": "lab05-group-01",
-    "added_members": ["U123456", "U789012", "U345678"],
-    "invite_link": "https://chat.platform.com/rooms/C99887766"
+    "room_id": "129812345678901234",
+    "discord_channel_id": "129812345678901234",
+    "channel_name": "group-lab05-group-01",
+    "added_members": ["U123456", "U789012", "U345678"]
   }
   ```
 * **Không thêm được thành viên (`207 Multi-Status`)**:
   ```json
   {
     "status": "partial_success",
-    "room_id": "C99887766",
+    "room_id": "129812345678901234",
+    "discord_channel_id": "129812345678901234",
+    "channel_name": "group-lab05-group-01",
     "added_members": ["U123456"],
     "failed_members": [{"user_id": "U789012", "reason": "User not found"}]
   }
@@ -236,7 +238,7 @@ Mô tả: Tự động tạo channel/room chat nhóm trên nền tảng (Slack/D
   {
     "status": "error",
     "error_code": "PLATFORM_API_ERROR",
-    "message": "Không có quyền tạo channel trên nền tảng chat."
+    "message": "Không có quyền tạo channel trên Discord."
   }
   ```
 
@@ -248,9 +250,9 @@ Mô tả: Gửi tin nhắn hướng dẫn, phân công task hoặc trao đổi t
 #### Tham số đầu vào (Input Parameters):
 | Tham Số | Kiểu Dữ Liệu | Bắt Buộc | Mô Tả |
 | :--- | :---: | :---: | :--- |
-| `target_id` | `string` | Có | Room ID hoặc User ID nhận tin nhắn |
-| `message` | `string` | Có | Nội dung tin nhắn (hỗ trợ định dạng Markdown) |
-| `attachments` | `array[object]` | Không | Các đính kèm (File, Button, Card UI...) |
+| `target_id` | `string` | Có | Discord Channel ID hoặc User ID nhận tin nhắn |
+| `message` | `string` | Có | Nội dung tin nhắn (hỗ trợ định dạng Discord Markdown) |
+| `attachments` | `array[object]` | Không | Các đính kèm (File, Embed, Button...) |
 
 #### Kết quả đầu ra (Output Schema):
 * **Thành công (`200 OK`)**:
@@ -288,7 +290,8 @@ Mô tả: Tag tên học viên (@username) hoặc phát thông báo khẩn cấp
   ```json
   {
     "status": "success",
-    "notified_users_count": 3
+    "notified_users_count": 3,
+    "discord_mentions": ["<@U123456>", "<@U789012>", "<@U345678>"]
   }
   ```
 * **Lỗi hệ thống (`500 Internal Error`)**:
@@ -345,7 +348,7 @@ Mô tả: Sử dụng AI để phân tích yêu cầu bài lab nhóm thành các
 ---
 
 ### 9. `assign_task`
-Mô tả: Phân công task và checklist cho từng thành viên sau khi Nhóm trưởng đã xác nhận chia công việc.
+Mô tả: Phân công task và checklist cho từng thành viên trên Discord sau khi Nhóm trưởng đã xác nhận chia công việc. Trả về danh sách Markdown Checklist để Bot gửi trực tiếp vào channel nhóm Discord.
 
 #### Tham số đầu vào (Input Parameters):
 | Tham Số | Kiểu Dữ Liệu | Bắt Buộc | Mô Tả |
@@ -359,7 +362,11 @@ Mô tả: Phân công task và checklist cho từng thành viên sau khi Nhóm t
   {
     "status": "success",
     "assigned_count": 3,
-    "board_url": "https://lab.platform.com/boards/G01"
+    "assignments_summary": [
+      "- [ ] Task `T1`: Phân công cho <@U123456> (Deadline: 2026-07-30T18:00:00Z)",
+      "- [ ] Task `T2`: Phân công cho <@U789012> (Deadline: 2026-07-30T18:00:00Z)"
+    ],
+    "message": "Đã phân công thành công 3 task cho nhóm G01 trên Discord."
   }
   ```
 * **Không tìm thấy công việc (`404 Not Found`)**:
@@ -547,7 +554,7 @@ Mô tả: Tiếp nhận mô tả sự cố/log lỗi của học viên, phân t�
 ---
 
 ### 15. `fetch_peer_solution`
-Mô tả: Tìm kiếm các thành viên trong cùng nhóm đã hoàn thành thành công task tương tự/liên quan để gợi ý học viên tham khảo kết quả/cách làm.
+Mô tả: Tìm kiếm các thành viên trong cùng nhóm đã hoàn thành task tương tự/liên quan để trả về đoạn mã nguồn tham khảo (Code Block) trực tiếp trên Discord.
 
 #### Tham số đầu vào (Input Parameters):
 | Tham Số | Kiểu Dữ Liệu | Bắt Buộc | Mô Tả |
@@ -566,7 +573,8 @@ Mô tả: Tìm kiếm các thành viên trong cùng nhóm đã hoàn thành thà
         "user_id": "U123456",
         "full_name": "Pham Duc Thien",
         "completed_task_id": "T1",
-        "solution_snippet_url": "https://lab.platform.com/code/snippet_t1.js",
+        "code_snippet": "```python\n# Code mẫu tham khảo...\nimport os\ndef init_database():\n    db_url = os.getenv('DATABASE_URL')\n    return True\n```",
+        "github_commit_url": "https://github.com/example-org/lab-g01/commit/a1b2c3d4",
         "note": "Học viên này đã hoàn thành task T1 liên quan đến phần kết nối Database."
       }
     ]
