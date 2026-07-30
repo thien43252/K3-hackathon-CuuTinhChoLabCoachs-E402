@@ -1,0 +1,306 @@
+# starter_v0 — tool declarations for Labcode Assistant Agent
+# Tool names must stay in sync across:
+#   this file -> tools/__init__.py (ALL_TOOLS) -> test_tools.py
+
+tools:
+  # ---------------- Admin & Knowledge Tools ----------------
+  - name: upload_lab_material
+    description: >
+      Admin tải lên nội dung bài lab code, bài giảng và mã nguồn codebase mẫu lên hệ thống.
+      Sử dụng khi Admin thiết lập tài liệu hoặc nội dung cho bài lab mới.
+    parameters:
+      type: object
+      properties:
+        lab_id:
+          type: string
+          description: "Mã định danh duy nhất của bài lab (ví dụ: 'LAB05_INDIVIDUAL', 'LAB05_GROUP')."
+        title:
+          type: string
+          description: "Tiêu đề bài lab."
+        type:
+          type: string
+          enum: [individual, group]
+          description: "Loại bài lab: 'individual' (Cá nhân) hoặc 'group' (Nhóm)."
+        description:
+          type: string
+          description: "Nội dung mô tả yêu cầu bài lab."
+        lecture_files:
+          type: array
+          items: {type: string}
+          description: "Danh sách URL hoặc đường dẫn tệp bài giảng (tùy chọn)."
+        codebase_repo_url:
+          type: string
+          description: "Đường dẫn kho chứa codebase mẫu (tùy chọn)."
+      required: [lab_id, title, type, description]
+
+  - name: codebase_indexer
+    description: >
+      Tự động trích xuất, phân tích và đánh chỉ mục (index) tệp bài giảng và codebase vào hệ thống RAG / Vector Database.
+      Sử dụng sau khi Admin tải lên tài liệu bài lab hoặc khi cần re-index dữ liệu.
+    parameters:
+      type: object
+      properties:
+        lab_id:
+          type: string
+          description: "Mã bài lab cần index dữ liệu."
+        force_reindex:
+          type: boolean
+          default: false
+          description: "Bắt buộc index lại từ đầu."
+      required: [lab_id]
+
+  - name: RAG_search
+    description: >
+      Truy vấn cơ sở tri thức RAG để lấy các đoạn mã nguồn mẫu, hướng dẫn làm bài hoặc đáp án bài giảng liên quan đến câu hỏi.
+      Sử dụng khi học viên hỏi về cách làm lab, tài liệu bài giảng hoặc ví dụ code.
+    parameters:
+      type: object
+      properties:
+        query:
+          type: string
+          description: "Câu hỏi hoặc nội dung cần tra cứu."
+        lab_id:
+          type: string
+          description: "Mã bài lab cần giới hạn phạm vi truy vấn."
+        top_k:
+          type: integer
+          default: 5
+          description: "Số lượng kết quả phù hợp nhất cần trả về."
+      required: [query, lab_id]
+
+  # ---------------- Platform & Context Tools ----------------
+  - name: get_user_context
+    description: >
+      Lấy thông tin chi tiết về người dùng đang tương tác với Bot, lịch làm lab trong ngày, vai trò và thông tin nhóm.
+      Sử dụng đầu tiên khi nhận diện câu hỏi từ học viên để xác định vai trò (học viên/nhóm trưởng), loại lab (cá nhân/nhóm) và group_id.
+    parameters:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: "ID người dùng trên hệ thống chat (Slack/Discord/LMS)."
+        date:
+          type: string
+          description: "Ngày làm lab (định dạng YYYY-MM-DD, tùy chọn)."
+      required: [user_id]
+
+  - name: create_group_room
+    description: >
+      Tự động tạo channel/room chat nhóm trên nền tảng (Slack/Discord/Teams) và gửi lời mời cho các thành viên.
+      Sử dụng trong luồng làm lab nhóm sau khi Bot xác nhận bài lab nhóm hôm nay.
+    parameters:
+      type: object
+      properties:
+        room_name:
+          type: string
+          description: "Tên room chat cần tạo."
+        member_ids:
+          type: array
+          items: {type: string}
+          description: "Danh sách User ID của các thành viên trong nhóm."
+        is_private:
+          type: boolean
+          default: true
+          description: "Quyền riêng tư của room (mặc định true)."
+      required: [room_name, member_ids]
+
+  - name: send_message
+    description: >
+      Gửi tin nhắn hướng dẫn, trao đổi trực tiếp hoặc kết quả xử lý tới học viên hoặc kênh nhóm.
+      Sử dụng khi gửi hướng dẫn làm lab cá nhân, gửi yêu cầu task hoặc trao đổi chung.
+    parameters:
+      type: object
+      properties:
+        target_id:
+          type: string
+          description: "Room ID hoặc User ID nhận tin nhắn."
+        message:
+          type: string
+          description: "Nội dung tin nhắn (hỗ trợ Markdown)."
+        attachments:
+          type: array
+          items: {type: object}
+          description: "Đính kèm (File, Card UI, link...)."
+      required: [target_id, message]
+
+  - name: send_notification
+    description: >
+      Tag tên học viên (@username) hoặc phát thông báo khẩn cấp/nhắc nhở quan trọng trong kênh làm việc.
+      Sử dụng khi phát thông báo chia task, nhắc deadline hoặc báo trễ tiến độ.
+    parameters:
+      type: object
+      properties:
+        room_id:
+          type: string
+          description: "Room ID nơi phát thông báo."
+        user_ids_to_tag:
+          type: array
+          items: {type: string}
+          description: "Danh sách ID người dùng cần tag tên."
+        content:
+          type: string
+          description: "Nội dung thông báo."
+        urgency:
+          type: string
+          enum: [normal, high, urgent]
+          default: "normal"
+          description: "Mức độ ưu tiên ('normal', 'high', 'urgent')."
+      required: [room_id, user_ids_to_tag, content]
+
+  # ---------------- Task Management Tools ----------------
+  - name: parse_lab_requirements
+    description: >
+      Phân tích yêu cầu bài lab nhóm thành các task nhỏ, ước lượng mốc thời gian/phase và tạo checklist công việc.
+      Sử dụng trong luồng lab nhóm khi nhóm trưởng khởi tạo hoặc hỏi về các yêu cầu task cần chia.
+    parameters:
+      type: object
+      properties:
+        lab_id:
+          type: string
+          description: "Mã bài lab cần phân tích."
+        member_count:
+          type: integer
+          description: "Số lượng thành viên trong nhóm."
+        duration_hours:
+          type: number
+          default: 2.0
+          description: "Thời lượng làm lab dự kiến tính theo giờ."
+      required: [lab_id, member_count]
+
+  - name: assign_task
+    description: >
+      Phân công task và checklist cho từng thành viên trong nhóm sau khi Nhóm trưởng đã xác nhận phương án chia công việc.
+      Sử dụng khi Nhóm trưởng chốt phân chia task.
+    parameters:
+      type: object
+      properties:
+        group_id:
+          type: string
+          description: "Mã định danh nhóm."
+        assignments:
+          type: array
+          description: "Danh sách phân công cho các thành viên."
+          items:
+            type: object
+            properties:
+              user_id:
+                type: string
+                description: "ID học viên nhận task."
+              task_id:
+                type: string
+                description: "Mã task (ví dụ: 'T1', 'T2')."
+              deadline:
+                type: string
+                description: "Thời hạn hoàn thành (ISO 8601 string)."
+            required: [user_id, task_id]
+      required: [group_id, assignments]
+
+  - name: track_group_progress
+    description: >
+      Tổng hợp phần trăm hoàn thành, danh sách task đã xong / chưa xong của tất cả thành viên trong nhóm.
+      Sử dụng khi Nhóm trưởng hoặc Bot cần kiểm tra tiến độ chung của nhóm.
+    parameters:
+      type: object
+      properties:
+        group_id:
+          type: string
+          description: "Mã nhóm cần kiểm tra tiến độ."
+      required: [group_id]
+
+  - name: generate_reflection
+    description: >
+      Tổng hợp lịch sử làm bài, mức độ hoàn thành task và thái độ để sinh bài đánh giá / reflection cá nhân cho từng học viên.
+      Sử dụng khi nhóm đã hoàn thành bài lab để đưa ra nhận xét cá nhân.
+    parameters:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: "Mã học viên."
+        lab_id:
+          type: string
+          description: "Mã bài lab."
+      required: [user_id, lab_id]
+
+  # ---------------- Scheduler & Remind Tools ----------------
+  - name: schedule_reminder
+    description: >
+      Thiết lập lịch thông báo tự động (Timer / Cron) để nhắc học viên cập nhật tiến độ hoặc sắp đến deadline.
+      Sử dụng trong luồng theo dõi tiến độ hoặc xử lý trễ tiến độ.
+    parameters:
+      type: object
+      properties:
+        target_id:
+          type: string
+          description: "User ID hoặc Room ID nhận nhắc nhở."
+        remind_at:
+          type: string
+          description: "Thời điểm nhắc nhở trong tương lai (định dạng ISO 8601, ví dụ: '2026-07-30T18:00:00Z')."
+        message:
+          type: string
+          description: "Nội dung tin nhắn nhắc nhở."
+        repeat_every_minutes:
+          type: integer
+          description: "Chu kỳ lặp lại tính theo phút (tùy chọn)."
+      required: [target_id, remind_at, message]
+
+  - name: extend_deadline
+    description: >
+      Gia hạn mốc thời gian hoàn thành task cho học viên gặp khó khăn kỹ thuật hoặc trễ tiến độ (Tối đa 2 lần gia hạn).
+      Sử dụng trong luồng xử lý trễ tiến độ khi học viên đề nghị giãn deadline.
+    parameters:
+      type: object
+      properties:
+        task_id:
+          type: string
+          description: "Mã task cần gia hạn."
+        user_id:
+          type: string
+          description: "Mã học viên sở hữu task."
+        extra_minutes:
+          type: integer
+          description: "Số phút xin gia hạn thêm (phải > 0, ví dụ: 30)."
+        reason:
+          type: string
+          description: "Lý do xin gia hạn (tùy chọn)."
+      required: [task_id, user_id, extra_minutes]
+
+  # ---------------- Troubleshooting Tools ----------------
+  - name: analyze_student_issue
+    description: >
+      Tiếp nhận mô tả sự cố/log lỗi của học viên, phân tích nguyên nhân gốc rễ và đưa ra giải pháp khắc phục.
+      Sử dụng khi học viên báo gặp lỗi code, lỗi môi trường hoặc không làm được task.
+    parameters:
+      type: object
+      properties:
+        user_id:
+          type: string
+          description: "Mã học viên báo lỗi."
+        task_id:
+          type: string
+          description: "Mã task đang thực hiện."
+        issue_description:
+          type: string
+          description: "Mô tả lỗi hoặc câu hỏi của học viên (tối thiểu 10 ký tự)."
+        error_log:
+          type: string
+          description: "Đoạn log lỗi từ Terminal / IDE (tùy chọn)."
+      required: [user_id, task_id, issue_description]
+
+  - name: fetch_peer_solution
+    description: >
+      Tìm kiếm các thành viên trong cùng nhóm đã hoàn thành thành công task tương tự/liên quan để gợi ý học viên đang gặp khó khăn tham khảo kết quả.
+      Sử dụng trong luồng xử lý trễ tiến độ hoặc sau khi phân tích lỗi của học viên.
+    parameters:
+      type: object
+      properties:
+        group_id:
+          type: string
+          description: "Mã nhóm."
+        current_task_id:
+          type: string
+          description: "Mã task học viên đang trễ/gặp khó khăn."
+        requesting_user_id:
+          type: string
+          description: "Mã học viên yêu cầu hỗ trợ."
+      required: [group_id, current_task_id, requesting_user_id]
