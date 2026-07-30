@@ -222,12 +222,38 @@ class LabInsightExtractor:
         timeline_parts = []
         file_summaries = []
 
-        kw_objective = ["mục tiêu", "objective", "bối cảnh", "giới thiệu", "đề bài", "de-bai", "lời nói đầu"]
-        kw_setup     = ["cài đặt", "setup", "chuẩn bị", "prerequisite", "install", "môi trường"]
-        kw_tasks     = ["task", "bước", "yêu cầu", "checkpoint", "cp", "nhiệm vụ", "mốc"]
-        kw_rubrics   = ["rubric", "chấm", "nghiệm thu", "tiêu chí", "đánh giá", "scoring"]
-        kw_pitfalls  = ["lưu ý", "chú ý", "bẫy", "pitfall", "rủi ro", "chỗ khó", "cảnh báo"]
-        kw_timeline  = ["thời gian", "phút", "giờ", "timeline", "lịch trình", "lộ trình", "kịch bản thời gian"]
+        kw_objective = ["mục tiêu", "objective", "bối cảnh", "giới thiệu", "đề bài", "de-bai", "lời nói đầu", "lý thuyết", "tổng quan"]
+        kw_setup     = ["cài đặt", "setup", "chuẩn bị", "prerequisite", "install", "môi trường", "cấu trúc thư mục"]
+        kw_tasks     = [
+            "task", "bước", "yêu cầu", "checkpoint", "cp", "nhiệm vụ", "mốc",
+            "thiết kế", "xây dựng", "implement", "build", "lắp", "lắp ráp",
+            "agent", "tool", "prototype", "phase", "giai đoạn", "thực hành",
+            "setup", "evaluation", "baseline", "code", "chatbot", "prompt",
+            "failed trace", "test tool", "react",
+        ]
+        kw_rubrics   = ["rubric", "chấm", "nghiệm thu", "tiêu chí", "đánh giá", "scoring", "bảng chấm", "so sánh"]
+        kw_pitfalls  = ["lưu ý", "chú ý", "bẫy", "pitfall", "rủi ro", "chỗ khó", "cảnh báo", "bảo mật", "ghi nhớ"]
+        kw_timeline  = ["thời gian", "phút", "giờ", "timeline", "lịch trình", "lộ trình", "kịch bản thời gian", "tiến độ"]
+
+        def _clean_heading(text: str) -> str:
+            """Làm sạch heading: bỏ emoji, số thứ tự '1. ', ký tự đặc biệt đầu dòng."""
+            import re
+            # Bỏ emoji/icon đầu dòng (kí tự có codepoint > 0x1F000)
+            parts = text.strip().split(None, 1)
+            if parts:
+                first_word = parts[0]
+                if any(ord(c) > 0x1F000 for c in first_word) or all(not c.isalnum() for c in first_word):
+                    text = parts[1] if len(parts) > 1 else ''
+                    parts = text.strip().split(None, 1)
+                    if parts:
+                        text = parts[0] + (' ' + parts[1] if len(parts) > 1 else '')
+            # Bỏ số thứ tự kiểu "1. ", "2) "
+            text = re.sub(r'^\d+[\.\)]\s*', '', text.strip())
+            # Bỏ số La Mã ở đầu
+            text = re.sub(r'^[IVX]+[\.\)]\s*', '', text)
+            # Bỏ dash/pipe
+            text = text.lstrip('—-|: ').strip()
+            return text
 
         def _extract_bullets(content: str) -> list:
             items = []
@@ -238,6 +264,20 @@ class LabInsightExtractor:
                 elif s and s[0].isdigit() and ". " in s[:4]:
                     items.append(s[s.index(". ")+2:].strip())
             return items[:8]
+
+        def _extract_mermaid_title(content: str) -> str:
+            """Trích xuất title từ mermaid block để dùng làm timeline text."""
+            import re
+            # Tìm "title ..." trong mermaid block
+            m = re.search(r'title\s+(.+)', content)
+            if m:
+                return m.group(1).strip()
+            # Tìm dòng không phải code trong mermaid
+            for line in content.split('\n'):
+                s = line.strip()
+                if s and not s.startswith('`') and not s.startswith('%%') and s != 'timeline' and len(s) > 10:
+                    return s
+            return content[:200]
 
         for doc in documents:
             fn = doc.get("file_name", doc.get("relative_path", "unknown"))
@@ -252,31 +292,61 @@ class LabInsightExtractor:
                     "summary": f"{first_heading}: {first_content[:150]}..."
                 })
 
-            for section in sections:
+            # Gom sections theo level-2: mỗi level-2 heading hấp thụ content của level-3+ sections sau nó
+            merged_l2 = {}  # heading -> {"content": str, "level": int}
+            for i, section in enumerate(sections):
+                if section.get("level", 2) == 2:
+                    merged_l2[i] = {"heading": section["heading"], "content": section.get("content", ""), "level": 2}
+                    # Merge content từ các level-3+ sections tiếp theo cho đến level-2 tiếp theo
+                    combined_content = section.get("content", "")
+                    for j in range(i + 1, len(sections)):
+                        if sections[j].get("level", 2) <= 2:
+                            break
+                        sub_content = sections[j].get("content", "")
+                        if sub_content.strip():
+                            combined_content += "\n" + sub_content.strip()
+                    merged_l2[i]["combined"] = combined_content
+
+            for idx, section in enumerate(sections):
                 heading = section["heading"].lower()
-                content = section["content"].strip()
-                if not content:
+                raw_content = section["content"].strip()
+                if not raw_content:
                     continue
 
+                # Xử lý mermaid content cho timeline
+                content_clean = raw_content
+                if 'mermaid' in raw_content[:50] or '```' in raw_content[:50]:
+                    content_clean = _extract_mermaid_title(raw_content)
+
+                # Dùng combined_content nếu section là level-2 (đã gom từ sub-sections)
+                if section.get("level", 2) == 2 and idx in merged_l2:
+                    combined_content = merged_l2[idx].get("combined", raw_content)
+                else:
+                    combined_content = raw_content
+
                 if any(k in heading for k in kw_objective):
-                    objective_parts.append(content[:500])
+                    objective_parts.append(combined_content[:500])
                 elif any(k in heading for k in kw_setup):
-                    setup_parts.append(content[:600])
+                    setup_parts.append(combined_content[:600])
                 elif any(k in heading for k in kw_rubrics):
-                    rubric_parts.append(content[:600])
+                    rubric_parts.append(combined_content[:600])
                 elif any(k in heading for k in kw_timeline):
-                    timeline_parts.append(content[:300])
+                    timeline_text = content_clean if content_clean != raw_content else combined_content
+                    timeline_parts.append(timeline_text[:300])
                 elif any(k in heading for k in kw_pitfalls):
-                    pitfalls.append(f"[{fn}] {section['heading']}: {content[:200]}")
+                    pitfalls.append(f"[{fn}] {section['heading']}: {combined_content[:200]}")
                 elif any(k in heading for k in kw_tasks):
-                    checklist = _extract_bullets(content)
-                    tasks_list.append({
-                        "name": section["heading"],
-                        "description": content[:400],
-                        "checklist": checklist if checklist else _extract_bullets(content[:800]),
-                        "deliverable": "",
-                        "estimated_minutes": None
-                    })
+                    if section.get("level", 2) == 2:
+                        checklist = _extract_bullets(combined_content)
+                        clean_name = _clean_heading(section["heading"])
+                        if len(clean_name) >= 5:
+                            tasks_list.append({
+                                "name": clean_name or section["heading"],
+                                "description": combined_content[:400],
+                                "checklist": checklist if checklist else _extract_bullets(combined_content[:800]),
+                                "deliverable": "",
+                                "estimated_minutes": None
+                            })
 
         # Merge & build output
         lab_objective = "\n\n".join(objective_parts[:3]) or "Xem chi tiết trong tài liệu đính kèm."
@@ -285,18 +355,36 @@ class LabInsightExtractor:
         timeline = "\n".join(timeline_parts[:2]) or ""
 
         if not tasks_list:
-            # Fallback: tạo tasks từ tất cả H2 sections của documents
+            # Fallback: tạo tasks từ H2 sections, LOẠI bỏ rubric/objective/timeline/pitfalls
+            skip_kw = kw_rubrics + kw_objective + kw_timeline + kw_pitfalls + ["cấu trúc", "danh sách", "phân công"]
+            # Ưu tiên sections từ file hướng dẫn chính (CODELAB, guide) — không lấy từ reference docs
+            prefer_files = ["codelab", "guide", "readme"]
+            secondary_files = ["phan_cong", "danh_sach", "de_tai", "trace", "eval"]
+            h2_sections = []
             for doc in documents:
+                fn = doc.get("file_name", doc.get("relative_path", "")).lower()
                 for sec in doc.get("sections", []):
-                    if sec.get("level") == 2:
-                        bullets = _extract_bullets(sec.get("content", ""))
-                        tasks_list.append({
-                            "name": sec["heading"],
-                            "description": sec.get("content", "")[:300],
-                            "checklist": bullets if bullets else [sec["heading"]],
-                            "deliverable": "",
-                            "estimated_minutes": None
-                        })
+                    if sec.get("level") != 2:
+                        continue
+                    h = sec.get("heading", "").lower()
+                    if any(k in h for k in skip_kw):
+                        continue
+                    # Skip nếu là reference doc không có nội dung task
+                    if any(rf in fn for rf in secondary_files):
+                        continue
+                    h2_sections.append((sec, fn))
+            # Ưu tiên sections từ file chính (codelab, guide)
+            h2_sections.sort(key=lambda x: not any(pf in x[1] for pf in prefer_files))
+            for sec, fn in h2_sections:
+                    clean_name = _clean_heading(sec["heading"])
+                    bullets = _extract_bullets(sec.get("content", ""))
+                    tasks_list.append({
+                        "name": clean_name or sec["heading"],
+                        "description": sec.get("content", "")[:300],
+                        "checklist": bullets if bullets else [clean_name],
+                        "deliverable": "",
+                        "estimated_minutes": None
+                    })
             if not tasks_list:
                 tasks_list = [{"name": "Hoàn thành bài lab", "description": "Làm theo hướng dẫn trong tài liệu.",
                                "checklist": ["Đọc kỹ tài liệu", "Làm theo từng bước", "Nộp bài đúng hạn"],

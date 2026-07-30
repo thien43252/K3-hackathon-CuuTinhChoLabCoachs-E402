@@ -439,6 +439,139 @@ async def admin_assign_lab_error(interaction: discord.Interaction, error: app_co
 
 
 # ==========================================
+# SLASH COMMAND: Cập nhật tiến độ (không qua LLM)
+# ==========================================
+
+@bot.tree.command(name="update-progress", description="Cập nhật tiến độ task của bạn (không cần AI)")
+@app_commands.describe(
+    task_id="Mã task cần cập nhật (ví dụ: T1, T2, CT1)",
+    status="Trạng thái mới: in_progress hoặc completed (mặc định: completed)",
+    checklist_done="Số checklist đã hoàn thành (tùy chọn, mặc định = tổng nếu status=completed)",
+)
+async def update_progress(
+    interaction: discord.Interaction,
+    task_id: str,
+    status: str = "completed",
+    checklist_done: int = None,
+):
+    """Tự động cập nhật tiến độ — không gọi AI, không chờ LLM."""
+    # Kiểm tra channel có phải group room không
+    channel_id = str(interaction.channel.id)
+
+    def check_room_and_update():
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT room_name FROM rooms WHERE discord_channel_id = ?", (channel_id,))
+        room = cursor.fetchone()
+        if not room:
+            conn.close()
+            return {"status": "empty", "error_code": "NO_CONTEXT",
+                    "message": "Lệnh này chỉ dùng được trong group room."}
+        group_id = room["room_name"]
+        user_id = str(interaction.user.id)
+        conn.close()
+
+        # Gọi trực tiếp update_group_progress (không qua LLM)
+        from app.tools.task_tools import update_group_progress as ugp
+        return ugp(
+            task_id=task_id,
+            status=status if status in ("in_progress", "completed") else None,
+            completed_checklist=checklist_done,
+        )
+
+    await interaction.response.defer(ephemeral=True)
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, check_room_and_update)
+
+        if result["status"] == "success":
+            msg = (
+                f"✅ **Đã cập nhật tiến độ!**\n"
+                f"• Task: `{task_id}` → **{result.get('new_status', status)}**\n"
+                f"• Checklist: {result.get('completed_checklist', '?')}/{result.get('total_checklist', '?')}\n"
+                f"• Team progress: **{result.get('overall_team_progress_pct', 0)}%**"
+            )
+        elif result.get("error_code") == "NO_CONTEXT":
+            msg = "🚫 Bạn chỉ có thể dùng lệnh này trong group room do bot tạo."
+        elif result.get("error_code") == "NO_ASSIGNMENT_FOUND":
+            msg = f"❌ Không tìm thấy task `{task_id}` cho bạn. Hãy kiểm tra lại mã task hoặc nhờ leader tạo plan."
+        else:
+            msg = f"❌ Lỗi: {result.get('message', 'Không xác định')}"
+
+        await interaction.followup.send(msg, ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Lỗi hệ thống: {str(e)}", ephemeral=True)
+
+
+# ==========================================
+# SLASH COMMAND: Xem tiến độ (không qua LLM)
+# ==========================================
+
+@bot.tree.command(name="view-progress", description="Xem tiến độ làm lab của nhóm (không cần AI)")
+async def view_progress(interaction: discord.Interaction):
+    """Xem tiến độ nhóm — không gọi AI, không chờ LLM."""
+    channel_id = str(interaction.channel.id)
+
+    def check_room_and_track():
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT room_name FROM rooms WHERE discord_channel_id = ?", (channel_id,))
+        room = cursor.fetchone()
+        conn.close()
+        if not room:
+            return {"status": "empty", "error_code": "NO_CONTEXT",
+                    "message": "Lệnh này chỉ dùng được trong group room."}
+
+        # Set context + call track_group_progress
+        from app import discord_context
+        from app.tools.task_tools import track_group_progress as tgp
+        discord_context.set_context(group_id=room["room_name"], channel_type="group_room")
+        try:
+            return tgp()
+        finally:
+            discord_context.clear_context()
+
+    await interaction.response.defer(ephemeral=True)
+    try:
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(None, check_room_and_track)
+
+        if result["status"] == "success":
+            bar = result.get("progress_bar", "")
+            pct = result.get("overall_completion_percent", 0)
+            done = result.get("completed_tasks", 0)
+            total = result.get("total_tasks", 0)
+            msg = (
+                f"📊 **Tiến độ nhóm**\n"
+                f"{bar}\n"
+                f"• Hoàn thành: **{done}/{total}** task ({pct}%)\n"
+            )
+            # Thêm breakdown từng member
+            members = result.get("members_progress", [])
+            if members:
+                by_user = {}
+                for m in members:
+                    uid = m["user_id"]
+                    if uid not in by_user:
+                        by_user[uid] = {"done": 0, "total": 0}
+                    by_user[uid]["done"] += 1 if m["status"] == "completed" else 0
+                    by_user[uid]["total"] += 1
+                msg += "\n**Thành viên:**\n"
+                for uid, st in by_user.items():
+                    msg += f"• <@{uid}>: {st['done']}/{st['total']} tasks\n"
+        elif result.get("error_code") == "NO_CONTEXT":
+            msg = "🚫 Bạn chỉ có thể dùng lệnh này trong group room do bot tạo."
+        elif result.get("error_code") == "NO_PLAN":
+            msg = "📭 Nhóm chưa chốt kế hoạch. Hãy nhờ leader tạo plan trước."
+        else:
+            msg = f"❌ {result.get('message', 'Không xác định')}"
+
+        await interaction.followup.send(msg, ephemeral=True)
+    except Exception as e:
+        await interaction.followup.send(f"❌ Lỗi hệ thống: {str(e)}", ephemeral=True)
+
+
+# ==========================================
 # CÁC HÀM HELPER XỬ LÝ KÊNH (CHANNELS)
 # ==========================================
 

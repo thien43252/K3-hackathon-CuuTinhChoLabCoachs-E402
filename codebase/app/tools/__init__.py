@@ -17,6 +17,7 @@ from app.tools.task_tools import (
     get_group_plan,
     track_group_progress,
     update_group_progress,
+    list_members,
     GenerateGroupPlanInput,
     GetGroupPlanInput,
     TrackGroupProgressInput,
@@ -40,6 +41,7 @@ ALL_TOOLS = {
     "get_group_plan": get_group_plan,
     "track_group_progress": track_group_progress,
     "update_group_progress": update_group_progress,
+    "list_members": list_members,
 
     # Troubleshooting Tools
     "analyze_student_issue": analyze_student_issue,
@@ -76,6 +78,7 @@ __all__ = [
     "get_group_plan",
     "track_group_progress",
     "update_group_progress",
+    "list_members",
     "analyze_student_issue",
     "ALL_TOOLS",
     "TOOL_FUNCTIONS",

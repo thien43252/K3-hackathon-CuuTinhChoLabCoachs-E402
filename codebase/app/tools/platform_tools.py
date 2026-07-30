@@ -118,8 +118,15 @@ def create_group_room(
     Mô tả: Tự động tạo channel/room chat nhóm và ghi nhận thông tin vào SQLite DB.
     Room được tạo ở chế độ private (chỉ thành viên trong nhóm mới thấy).
     Chỉ tạo phòng khi TẤT CẢ thành viên trong danh sách đều hợp lệ.
+    CHỈ dùng được ở general channel — không tạo phòng trong phòng nhóm.
     """
     try:
+        # Guardrail: không cho tạo phòng trong group room
+        ctx = discord_context.get()
+        if ctx and ctx.channel_type == "group_room":
+            return {"status": "empty", "error_code": "WRONG_CHANNEL",
+                    "message": "Bạn đang ở trong phòng nhóm riêng. Chỉ tạo phòng từ kênh chung (general) nhé."}
+
         if not room_name or not room_name.strip() or not member_ids:
             return {
                 "status": "empty",

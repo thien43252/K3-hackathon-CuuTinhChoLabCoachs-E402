@@ -6,6 +6,7 @@ Bao gồm:
 2. get_group_plan (Read)
 3. track_group_progress
 4. update_group_progress
+5. list_members
 """
 
 import json
@@ -1211,3 +1212,29 @@ def update_group_progress(
     except Exception as e:
         return {"status": "error", "error_code": "UPDATE_FAILED",
                 "message": f"Không thể cập nhật tiến độ: {e}"}
+
+
+def list_members() -> Dict[str, Any]:
+    """
+    5. list_members
+    Mô tả: Liệt kê danh sách thành viên trong group room hiện tại (id + tên).
+    Dùng khi leader không @mention thành viên — agent tự identify ai là ai.
+    Chỉ dùng được trong group room.
+    """
+    try:
+        ctx = discord_context.get()
+        if not ctx or not ctx.group_id or not ctx.members:
+            return {"status": "empty", "error_code": "NO_CONTEXT",
+                    "message": "Tool chỉ dùng được trong group room Discord."}
+
+        return {
+            "status": "success",
+            "group_id": ctx.group_id,
+            "channel_type": ctx.channel_type or "group_room",
+            "members": ctx.members,
+            "total": len(ctx.members),
+            "note": "Dùng các ID này để truyền vào generate_group_plan. Ưu tiên @mention nếu có thể.",
+        }
+    except Exception as e:
+        return {"status": "error", "error_code": "LIST_FAILED",
+                "message": f"Không thể lấy danh sách thành viên: {e}"}

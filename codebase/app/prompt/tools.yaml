@@ -130,6 +130,16 @@ tools:
           description: "Số checklist đã hoàn thành (tùy chọn)."
       required: [task_id]
 
+  - name: list_members
+    description: >
+      Liệt kê danh sách thành viên trong group room hiện tại (kèm id + tên).
+      Chỉ dùng được trong group room.
+      Dùng tool này KHI leader không @mention thành viên — agent tự identify ai là ai dựa vào tên.
+      Agent có thể dùng ID từ kết quả để truyền vào generate_group_plan.
+    parameters:
+      type: object
+      properties: {}
+
   # ---------------- Troubleshooting Tools ----------------
   - name: analyze_student_issue
     description: >

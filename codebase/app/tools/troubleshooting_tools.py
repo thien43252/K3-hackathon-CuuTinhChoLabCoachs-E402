@@ -26,10 +26,16 @@ def analyze_student_issue(
     """
     1. analyze_student_issue
     Mô tả: Phân tích sự cố/log lỗi của học viên dựa trên thông tin tri thức từ CSDL `lab_knowledge` SQLite DB.
-    user_id được auto-resolve từ Discord context.
+    user_id được auto-resolve từ Discord context. CHỈ dùng được trong group room.
     """
     try:
-        user_id = (discord_context.get().user_id) or ""
+        ctx = discord_context.get()
+        user_id = ctx.user_id or ""
+        channel_type = ctx.channel_type or ""
+        # Guardrail: chỉ cho phép trong group room
+        if channel_type != "group_room":
+            return {"status": "empty", "error_code": "NO_CONTEXT",
+                    "message": "Tool chỉ dùng được trong group room Discord."}
         if not user_id or not task_id or not task_id.strip() or not issue_description or not issue_description.strip():
             return {
                 "status": "empty",
