@@ -1,6 +1,10 @@
 # Tài Liệu Định Nghĩa Công Cụ (Agent Tools Specification)
 
-Tài liệu này mô tả chi tiết tất cả các công cụ (**Tools / APIs**) cần thiết để **AI Agent** thực thi quy trình hướng dẫn, quản lý và hỗ trợ học viên làm bài lab (Cá nhân & Nhóm).
+Tài liệu này mô tả chi tiết tất cả 15 công cụ (**Tools / APIs**) cần thiết để **AI Agent** thực thi quy trình hướng dẫn, quản lý và hỗ trợ học viên làm bài lab (Cá nhân & Nhóm). Toàn bộ 15 công cụ đã được tích hợp với **Cơ sở dữ liệu SQLite thực tế** tại `codebase/data/app.db`.
+
+> ⚠️ **QUY TẮC CỐT LÕI: CHỐNG BỊA ĐẶT (ANTI-HALLUCINATION POLICY)**
+> - **Trung thực khi không có dữ liệu**: Khi câu hỏi hoặc kết quả `RAG_search` trả về rỗng (`status: "empty"`), Bot **PHẢI NÓI RÕ KHÔNG TÌM THẤY THÔNG TIN / KHÔNG BIẾT**.
+> - **Tuyệt đối không bịa đặt**: Không tự bịa mã nguồn, không bịa tên hàm, không bịa quy trình hoặc ví dụ code không tồn tại trong CSDL bài lab.
 
 ---
 

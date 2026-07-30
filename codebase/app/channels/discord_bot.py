@@ -247,6 +247,53 @@ async def admin_list_labs_error(interaction: discord.Interaction, error: app_com
             ephemeral=True
         )
 
+
+# ==========================================
+# ADMIN SLASH COMMANDS: Gán Lab cho User
+# ==========================================
+
+@bot.tree.command(name="admin-assign-lab", description="[ADMIN] Gán một bài lab cho user (để user có lab khi hỏi bot)")
+@app_commands.describe(
+    user_id="Discord User ID của học viên",
+    lab_id="Mã bài lab cần gán (ví dụ: 01, DAY05, LAB05_GROUP)",
+    lab_type="Loại lab: individual hoặc group (mặc định individual)",
+    lab_title="Tiêu đề lab (để trống tự lấy từ lab_materials)"
+)
+@app_commands.checks.has_permissions(administrator=True)
+async def admin_assign_lab(interaction: discord.Interaction, user_id: str, lab_id: str, lab_type: str = "individual", lab_title: str = ""):
+    await interaction.response.defer(ephemeral=True)
+    try:
+        from app.tools.admin_tools import assign_lab_to_user
+        loop = asyncio.get_event_loop()
+        result = await loop.run_in_executor(
+            None,
+            lambda: assign_lab_to_user(user_id=user_id, lab_id=lab_id, lab_type=lab_type, lab_title=lab_title)
+        )
+        if result["status"] == "success":
+            await interaction.followup.send(
+                f"✅ {result['message']}",
+                ephemeral=True
+            )
+        else:
+            await interaction.followup.send(
+                f"❌ {result['message']}",
+                ephemeral=True
+            )
+    except Exception as e:
+        await interaction.followup.send(
+            f"❌ Lỗi: {str(e)}",
+            ephemeral=True
+        )
+
+@admin_assign_lab.error
+async def admin_assign_lab_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message(
+            "🚫 Bạn không có quyền dùng lệnh này. Chỉ Admin mới được gán lab.",
+            ephemeral=True
+        )
+
+
 # ==========================================
 # CÁC HÀM HELPER XỬ LÝ KÊNH (CHANNELS)
 # ==========================================

@@ -12,14 +12,8 @@ Loại: Tính năng mới
   - Số liệu mining / kết quả khảo sát (n = ?, % xác nhận):
   - ≥5 quote/ví dụ nguyên văn + nguồn:
 
-
 * Job executor: học viên trong quá trình làm labcode
 * Workflow:
-
-  * Cá nhân: user nhập lệnh gọi bot-> bot xác nhận bài lab hôm nay(cá nhân)-> gửi học viên hướng dẫn cách làm bài lab đó
-  * Nhóm: nhóm trưởng nhập lệnh gọi bot-> bot xác nhận bài lab hôm nay(nhóm)-> tự động tạo room và yêu cầu mời thêm thành viên-> xác định từng yêu cầu bài lab và đợi nhóm trưởng phân chia từng task, confirm -> gửi yêu cầu từng task bao gồm các task nhỏ đc chia theo mốc thời gian/phase kèm check list cho từng thành viên -> tổng hợp tiến độ của nhóm cho nhóm trưởng-> sau khi hoàn thành, bot sẽ đưa ra reflection cho từng thành viên
-  * Trễ tiền độ: Bot nhắc tiền độ, hỗ trợ giãn deadline và hỏi vấn đề học viên đang gặp phải của task đó-> học viên nêu ra vấn đề đang gặp phải-> đưa ra phương án giải quyết và có thể đưa ra đề xuất tham khảo kết quả task từ các thành viên khác trong nhóm
-  * Admin setup nội dung bài lab cho bot gồm: nội dung bài lab code, bài giảng, codebase
 
   ```mermaid
   flowchart TD
