@@ -15,7 +15,7 @@ GEMINI_API_KEY = os.getenv("GEMINI_API_KEY")
 if GEMINI_API_KEY:
     genai.configure(api_key=GEMINI_API_KEY)
     
-model = genai.GenerativeModel('gemini-1.5-flash')
+model = genai.GenerativeModel('gemini-2.0-flash')
 
 def codebase_indexer(lab_id: str, force_reindex: bool = False) -> bool:
     """Index dữ liệu lab vào Vector DB cho RAG (Mock implementation)"""
