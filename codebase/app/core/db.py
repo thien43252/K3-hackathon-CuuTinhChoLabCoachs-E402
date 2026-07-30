@@ -27,9 +27,28 @@ def init_db():
             description TEXT NOT NULL,
             lecture_files TEXT,
             codebase_repo_url TEXT,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            lab_date TEXT,
+            cohort INTEGER,
+            validated_date TEXT
         )
     """)
+    
+    # Đảm bảo các cột mới tồn tại nếu DB đã được tạo từ trước
+    try:
+        cursor.execute("ALTER TABLE lab_materials ADD COLUMN lab_date TEXT")
+    except sqlite3.OperationalError:
+        pass  # Cột đã tồn tại
+        
+    try:
+        cursor.execute("ALTER TABLE lab_materials ADD COLUMN cohort INTEGER")
+    except sqlite3.OperationalError:
+        pass  # Cột đã tồn tại
+
+    try:
+        cursor.execute("ALTER TABLE lab_materials ADD COLUMN validated_date TEXT")
+    except sqlite3.OperationalError:
+        pass  # Cột đã tồn tại
     
     # 2. Bảng lưu trữ dữ liệu chỉ mục RAG / Knowledge Base
     cursor.execute("""
@@ -106,6 +125,18 @@ def init_db():
             message TEXT NOT NULL,
             attachments TEXT,
             delivered_at TEXT NOT NULL
+        )
+    """)
+
+    # 8. Bảng lưu trữ kế hoạch nhóm (group_plans)
+    cursor.execute("""
+        CREATE TABLE IF NOT EXISTS group_plans (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            group_id TEXT NOT NULL,
+            lab_id TEXT NOT NULL,
+            plan_json TEXT NOT NULL,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
         )
     """)
 

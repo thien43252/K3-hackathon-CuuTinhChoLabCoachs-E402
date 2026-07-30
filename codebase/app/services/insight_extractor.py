@@ -3,7 +3,6 @@ import re
 import json
 import urllib.request
 from typing import Dict, Any, List
-from app.core.config import settings
 
 class LabInsightExtractor:
     """
@@ -13,7 +12,9 @@ class LabInsightExtractor:
     """
     
     def __init__(self):
-        self.api_key = settings.google_api_key
+        self.api_key = os.getenv("GEMINI_API_KEY") or os.getenv("GOOGLE_API_KEY")
+        self.openai_key = os.getenv("OPENAI_API_KEY")
+        self.default_provider = os.getenv("DEFAULT_PROVIDER", "openai").lower()
 
     def extract_insights(self, documents: List[Dict[str, Any]]) -> Dict[str, Any]:
         """
@@ -26,15 +27,30 @@ class LabInsightExtractor:
             merged_docs.append(f"### FILE: {doc['relative_path']}\n{doc['raw_content']}")
         full_content = "\n\n".join(merged_docs)
 
-        if self.api_key:
-            try:
-                return self._extract_via_gemini(full_content)
-            except Exception as e:
-                print(f"⚠️ Thất bại khi gọi Gemini API ({e}). Đang tự động chuyển sang phân tích Regex...")
-                return self._extract_via_regex(documents)
+        # Xây dựng danh sách mức độ ưu tiên chạy AI dựa trên .env
+        ai_providers = []
+        if self.default_provider == "openai":
+            ai_providers = [
+                ("openai", self.openai_key, self._extract_via_openai),
+                ("gemini", self.api_key, self._extract_via_gemini)
+            ]
         else:
-            print("ℹ️ Không tìm thấy GOOGLE_API_KEY. Sử dụng phân tích Regex...")
-            return self._extract_via_regex(documents)
+            ai_providers = [
+                ("gemini", self.api_key, self._extract_via_gemini),
+                ("openai", self.openai_key, self._extract_via_openai)
+            ]
+
+        # Thử lần lượt các phương án AI theo độ ưu tiên
+        for name, key, func in ai_providers:
+            if key:
+                try:
+                    return func(full_content)
+                except Exception as e:
+                    print(f"⚠️ Thất bại khi gọi {name.upper()} API ({e}). Đang thử chuyển hướng phương án dự phòng...")
+
+        # Fallback về Regex/Keywords
+        print("ℹ️ Sử dụng phân tích Regex/Keywords làm phương án dự phòng...")
+        return self._extract_via_regex(documents)
 
     def _extract_via_gemini(self, content: str) -> Dict[str, Any]:
         """Gọi Gemini 2.5 Flash sử dụng Structured Output để trích xuất tri thức."""
@@ -95,6 +111,64 @@ class LabInsightExtractor:
             # Trích xuất text phản hồi từ cấu trúc response của Gemini
             json_text = res_data["candidates"][0]["content"]["parts"][0]["text"]
             return json.loads(json_text)
+
+    def _extract_via_openai(self, content: str) -> Dict[str, Any]:
+        """Gọi OpenAI GPT-4o-mini để trích xuất tri thức sử dụng Structured Output."""
+        try:
+            from openai import OpenAI
+        except ImportError as exc:
+            raise RuntimeError("Install openai dependency first: pip install openai") from exc
+
+        client = OpenAI(api_key=self.openai_key)
+        
+        schema = {
+            "type": "object",
+            "properties": {
+                "lab_objective": {"type": "string", "description": "Tóm tắt mục tiêu cốt lõi của bài Lab"},
+                "setup_instructions": {"type": "string", "description": "Các bước chuẩn bị & cài đặt môi trường cần thiết"},
+                "tasks": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "name": {"type": "string", "description": "Tên hoặc ID của Task (ví dụ: Task 1, CP1)"},
+                      "description": {"type": "string", "description": "Mô tả ngắn gọn yêu cầu cần đạt được"}
+                    },
+                    "required": ["name", "description"],
+                    "additionalProperties": False
+                  }
+                },
+                "grading_rubrics": {"type": "string", "description": "Các tiêu chí đánh giá / chấm điểm hoặc cách thức nghiệm thu"},
+                "common_pitfalls": {
+                  "type": "array",
+                  "items": {"type": "string", "description": "Bẫy lỗi hoặc kịch bản rủi ro sinh viên hay mắc phải"}
+                }
+            },
+            "required": ["lab_objective", "setup_instructions", "tasks", "grading_rubrics", "common_pitfalls"],
+            "additionalProperties": False
+        }
+        
+        prompt = (
+            "Bạn là một chuyên gia phân tích bài toán thực hành AI cho sinh viên.\n"
+            "Hãy phân tích tài liệu bài Lab dưới đây và trích xuất ra thông tin tri thức có cấu trúc:\n\n"
+            f"{content[:20000]}"
+        )
+        
+        response = client.chat.completions.create(
+            model="gpt-4o-mini",
+            messages=[{"role": "user", "content": prompt}],
+            response_format={
+                "type": "json_schema",
+                "json_schema": {
+                    "name": "lab_insight",
+                    "strict": True,
+                    "schema": schema
+                }
+            },
+            temperature=0.0
+        )
+        
+        return json.loads(response.choices[0].message.content)
 
     def _extract_via_regex(self, documents: List[Dict[str, Any]]) -> Dict[str, Any]:
         """Tự động gom nhóm thông tin bằng Regex/Keywords khi không có API key."""

@@ -1,4 +1,4 @@
-.PHONY: run test clean install
+.PHONY: run test clean install refresh-db
 
 # Khởi chạy Discord Bot chính của dự án
 run:
@@ -11,6 +11,14 @@ test:
 # Cài đặt môi trường và các package cần thiết
 install:
 	uv sync
+
+# Reset và khởi tạo lại toàn bộ cơ sở dữ liệu & cache
+refresh-db:
+	rm -f data/app.db
+	rm -rf data/uploads/materials/*
+	rm -rf cloned_repos/*
+	rm -f cloned_repos/.lab_cache.json
+	PYTHONPATH=. uv run python app/core/db.py
 
 # Dọn dẹp cache và các file rác sinh ra trong quá trình chạy
 clean:

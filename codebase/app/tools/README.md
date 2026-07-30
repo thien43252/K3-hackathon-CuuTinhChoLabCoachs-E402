@@ -1,9 +1,9 @@
 # Tài Liệu Định Nghĩa Công Cụ (Agent Tools Specification)
 
-Tài liệu này mô tả chi tiết tất cả 15 công cụ (**Tools / APIs**) cần thiết để **AI Agent** thực thi quy trình hướng dẫn, quản lý và hỗ trợ học viên làm bài lab (Cá nhân & Nhóm). Toàn bộ 15 công cụ đã được tích hợp với **Cơ sở dữ liệu SQLite thực tế** tại `codebase/data/app.db`.
+Tài liệu này mô tả chi tiết tất cả công cụ (**Tools / APIs**) cần thiết để **AI Agent** thực thi quy trình hướng dẫn, quản lý và hỗ trợ học viên làm bài lab (Cá nhân & Nhóm). Toàn bộ công cụ đã được tích hợp với **Cơ sở dữ liệu SQLite thực tế** tại `codebase/data/app.db`.
 
 > ⚠️ **QUY TẮC CỐT LÕI: CHỐNG BỊA ĐẶT (ANTI-HALLUCINATION POLICY)**
-> - **Trung thực khi không có dữ liệu**: Khi câu hỏi hoặc kết quả `RAG_search` trả về rỗng (`status: "empty"`), Bot **PHẢI NÓI RÕ KHÔNG TÌM THẤY THÔNG TIN / KHÔNG BIẾT**.
+> - **Trung thực khi không có dữ liệu**: Khi kết quả `get_lab_content` trả về rỗng (`status: "empty"`), Bot **PHẢI NÓI RÕ KHÔNG TÌM THẤY THÔNG TIN / KHÔNG BIẾT**.
 > - **Tuyệt đối không bịa đặt**: Không tự bịa mã nguồn, không bịa tên hàm, không bịa quy trình hoặc ví dụ code không tồn tại trong CSDL bài lab.
 
 ---
@@ -12,151 +12,59 @@ Tài liệu này mô tả chi tiết tất cả 15 công cụ (**Tools / APIs**)
 
 | STT | Tên Tool | Nhóm Chức Năng | Mục Đích Sử Dụng |
 | :---: | :--- | :--- | :--- |
-| 1 | `upload_lab_material` | Admin & Knowledge | Admin tải lên nội dung bài lab, bài giảng, codebase mẫu |
-| 2 | `codebase_indexer` | Admin & Knowledge | Đánh chỉ mục (index) dữ liệu codebase & bài giảng vào Vector DB / RAG |
-| 3 | `RAG_search` | Admin & Knowledge | Truy vấn tri thức bài giảng, codebase để trả lời câu hỏi |
-| 4 | `get_user_context` | Platform & Context | Lấy thông tin học viên, bài lab được phân công trong ngày & vai trò |
-| 5 | `create_group_room` | Platform & Context | Tự động tạo Discord Text Channel/Private Thread và phân quyền thành viên |
-| 6 | `send_message` | Platform & Context | Gửi tin nhắn trực tiếp (DM) hoặc gửi vào channel Discord nhóm |
-| 7 | `send_notification` | Platform & Context | Tag tên hoặc gửi thông báo quan trọng đến học viên |
-| 8 | `parse_lab_requirements` | Task Management | Phân tích bài lab nhóm thành các task nhỏ, timeline & checklist |
-| 9 | `assign_task` | Task Management | Phân công task, trả về Markdown Checklist cho Discord |
-| 10 | `track_group_progress` | Task Management | Tổng hợp tiến độ công việc nhóm cho Nhóm trưởng |
-| 11 | `generate_reflection` | Task Management | Sinh đánh giá/reflection cá nhân sau khi hoàn thành bài lab |
-| 12 | `schedule_reminder` | Scheduler & Remind | Đặt lịch tự động nhắc nhở tiến độ hoặc deadline |
-| 13 | `extend_deadline` | Scheduler & Remind | Gia hạn / giãn deadline cho task của học viên |
-| 14 | `analyze_student_issue` | Troubleshooting | Phân tích lỗi code / vấn đề học viên gặp phải và đưa ra hướng giải quyết |
-| 15 | `fetch_peer_solution` | Troubleshooting | Trả về Code Block tham khảo từ thành viên khác trực tiếp trên Discord |
+| 1 | `get_lab_content` | Knowledge & Content | Lấy nội dung lab từ cache (objective, tasks, rubrics, pitfall) |
+| 2 | `get_user_context` | Platform & Context | Lấy thông tin học viên, lab hôm nay (tự động theo ngày) |
+| 3 | `create_group_room` | Platform & Context | Tự động tạo Discord Text Channel/Private Thread và phân quyền thành viên |
+| 4 | `send_message` | Platform & Context | Gửi tin nhắn trực tiếp (DM) hoặc gửi vào channel Discord nhóm |
+| 5 | `send_notification` | Platform & Context | Tag tên hoặc gửi thông báo quan trọng đến học viên |
+| 6 | `parse_lab_requirements` | Task Management | Phân tích bài lab nhóm thành các task nhỏ, timeline & checklist |
+| 7 | `assign_task` | Task Management | Phân công task, trả về Markdown Checklist cho Discord |
+| 8 | `track_group_progress` | Task Management | Tổng hợp tiến độ công việc nhóm cho Nhóm trưởng |
+| 9 | `generate_reflection` | Task Management | Sinh đánh giá/reflection cá nhân sau khi hoàn thành bài lab |
+| 10 | `schedule_reminder` | Scheduler & Remind | Đặt lịch tự động nhắc nhở tiến độ hoặc deadline |
+| 11 | `extend_deadline` | Scheduler & Remind | Gia hạn / giãn deadline cho task của học viên |
+| 12 | `analyze_student_issue` | Troubleshooting | Phân tích lỗi code / vấn đề học viên gặp phải và đưa ra hướng giải quyết |
+| 13 | `fetch_peer_solution` | Troubleshooting | Trả về Code Block tham khảo từ thành viên khác trực tiếp trên Discord |
 
 ---
 
 ## 🛠 Chi Tiết Định Nghĩa Các Tools
 
-### 1. `upload_lab_material`
-Mô tả: Cho phép Admin thiết lập nội dung bài lab code, bài giảng và mã nguồn codebase mẫu lên hệ thống.
+### 1. `get_lab_content`
+Mô tả: Lấy nội dung bài lab đã được Admin clone + phân tích từ cache (`cloned_repos/.lab_cache.json`). Trả về mục tiêu, danh sách task, tiêu chí chấm điểm, bẫy lỗi thường gặp.
 
 #### Tham số đầu vào (Input Parameters):
 | Tham Số | Kiểu Dữ Liệu | Bắt Buộc | Mô Tả |
 | :--- | :---: | :---: | :--- |
-| `lab_id` | `string` | Có | Mã định danh duy nhất của bài lab (ví dụ: `LAB05_INDIVIDUAL`) |
-| `title` | `string` | Có | Tiêu đề bài lab |
-| `type` | `string` | Có | Loại bài lab (`"individual"` hoặc `"group"`) |
-| `description` | `string` | Có | Nội dung mô tả yêu cầu bài lab |
-| `lecture_files` | `array[string]` | Không | Danh sách Discord Attachment URLs hoặc đường dẫn tệp bài giảng (PDF, Markdown...) |
-| `codebase_repo_url` | `string` | Không | Đường dẫn kho chứa codebase mẫu (Git repo URL hoặc zip) |
+| `lab_id` | `string` | Có | Mã bài lab (ví dụ: `DAY05`, `LAB05_GROUP`) |
 
 #### Kết quả đầu ra (Output Schema):
-* **Thành công (`200 OK`)**:
+* **Thành công**:
   ```json
   {
     "status": "success",
-    "lab_id": "LAB05_GROUP",
-    "message": "Đã lưu trữ nội dung bài lab thành công.",
-    "created_at": "2026-07-30T12:00:00Z"
+    "lab_id": "DAY05",
+    "lab_objective": "Xây dựng AI Agent Workflow...",
+    "setup_instructions": "Cài đặt Python 3.11, pip install -r requirements.txt",
+    "tasks": [{"name": "Task 1", "description": "..."}],
+    "grading_rubrics": "Tiêu chí chấm điểm...",
+    "common_pitfalls": ["Thiếu .env", "Quên cài thư viện"],
+    "total_documents": 10,
+    "sitemap": [{"title": "README", "relative_path": "README.md"}]
   }
   ```
-* **Không tìm thấy / Thiếu dữ liệu (`400 Bad Request`)**:
+* **Không tìm thấy**:
   ```json
   {
     "status": "empty",
-    "error_code": "INVALID_INPUT",
-    "message": "Nội dung bài lab hoặc lab_id không được để trống."
-  }
-  ```
-* **Lỗi hệ thống (`500 Internal Error`)**:
-  ```json
-  {
-    "status": "error",
-    "error_code": "STORAGE_FAILED",
-    "message": "Không thể kết nối đến hệ thống lưu trữ dữ liệu Admin."
+    "error_code": "NO_CACHED_DATA",
+    "message": "Không tìm thấy nội dung cho lab 'DAY05'."
   }
   ```
 
 ---
 
-### 2. `codebase_indexer`
-Mô tả: Tự động trích xuất, phân tích và đánh chỉ mục (index) tệp bài giảng và codebase vào hệ thống RAG / Vector Database.
-
-#### Tham số đầu vào (Input Parameters):
-| Tham Số | Kiểu Dữ Liệu | Bắt Buộc | Mô Tả |
-| :--- | :---: | :---: | :--- |
-| `lab_id` | `string` | Có | Mã bài lab cần index dữ liệu |
-| `force_reindex` | `boolean` | Không | Bắt buộc index lại từ đầu (mặc định: `false`) |
-
-#### Kết quả đầu ra (Output Schema):
-* **Thành công (`200 OK`)**:
-  ```json
-  {
-    "status": "success",
-    "lab_id": "LAB05_GROUP",
-    "indexed_chunks": 142,
-    "vector_collection": "lab05_knowledge_base"
-  }
-  ```
-* **Không lấy được dữ liệu (`404 Not Found`)**:
-  ```json
-  {
-    "status": "empty",
-    "error_code": "NO_MATERIAL_FOUND",
-    "message": "Không tìm thấy tệp codebase hoặc bài giảng để index cho bài lab này."
-  }
-  ```
-* **Lỗi hệ thống (`500 Internal Error`)**:
-  ```json
-  {
-    "status": "error",
-    "error_code": "VECTOR_DB_ERROR",
-    "message": "Lỗi kết nối Vector Database khi ghi dữ liệu nhúng (embeddings)."
-  }
-  ```
-
----
-
-### 3. `RAG_search`
-Mô tả: Truy vấn cơ sở tri thức để lấy các đoạn mã nguồn mẫu, hướng dẫn làm bài hoặc đáp án bài giảng liên quan đến câu hỏi.
-
-#### Tham số đầu vào (Input Parameters):
-| Tham Số | Kiểu Dữ Liệu | Bắt Buộc | Mô Tả |
-| :--- | :---: | :---: | :--- |
-| `query` | `string` | Có | Câu hỏi hoặc vấn đề cần tra cứu |
-| `lab_id` | `string` | Có | Mã bài lab cần giới hạn phạm vi truy vấn |
-| `top_k` | `integer` | Không | Số lượng kết quả phù hợp nhất cần trả về (mặc định: `5`) |
-
-#### Kết quả đầu ra (Output Schema):
-* **Thành công (`200 OK`)**:
-  ```json
-  {
-    "status": "success",
-    "query": "Cách khởi tạo kết nối database trong codebase",
-    "data": [
-      {
-        "content": "Sử dụng hàm connectDB() trong src/db.js...",
-        "source": "src/db.js",
-        "score": 0.94
-      }
-    ]
-  }
-  ```
-* **Không tìm thấy dữ liệu (`200 OK` - Rỗng)**:
-  ```json
-  {
-    "status": "empty",
-    "data": [],
-    "message": "Không tìm thấy nội dung phù hợp với truy vấn trong tài liệu bài lab."
-  }
-  ```
-* **Lỗi hệ thống (`500 Internal Error`)**:
-  ```json
-  {
-    "status": "error",
-    "error_code": "SEARCH_SERVICE_DOWN",
-    "message": "Dịch vụ truy vấn RAG tạm thời không khả dụng."
-  }
-  ```
-
----
-
-### 4. `get_user_context`
+### 2. `get_user_context`
 Mô tả: Lấy thông tin chi tiết về người dùng đang gọi bot (Học viên/Nhóm trưởng), lịch làm lab trong ngày và danh sách thành viên nhóm (nếu có).
 
 #### Tham số đầu vào (Input Parameters):
@@ -205,7 +113,7 @@ Mô tả: Lấy thông tin chi tiết về người dùng đang gọi bot (Học
 
 ---
 
-### 5. `create_group_room`
+### 3. `create_group_room`
 Mô tả: Tự động tạo Discord Text Channel hoặc Private Thread riêng và phân quyền cho các thành viên nhóm.
 
 #### Tham số đầu vào (Input Parameters):
@@ -248,7 +156,7 @@ Mô tả: Tự động tạo Discord Text Channel hoặc Private Thread riêng v
 
 ---
 
-### 6. `send_message`
+### 4. `send_message`
 Mô tả: Gửi tin nhắn hướng dẫn, phân công task hoặc trao đổi trực tiếp với học viên hoặc kênh nhóm.
 
 #### Tham số đầu vào (Input Parameters):
@@ -278,7 +186,7 @@ Mô tả: Gửi tin nhắn hướng dẫn, phân công task hoặc trao đổi t
 
 ---
 
-### 7. `send_notification`
+### 5. `send_notification`
 Mô tả: Tag tên học viên (@username) hoặc phát thông báo khẩn cấp/nhắc nhở quan trọng trong kênh làm việc.
 
 #### Tham số đầu vào (Input Parameters):
@@ -309,7 +217,7 @@ Mô tả: Tag tên học viên (@username) hoặc phát thông báo khẩn cấp
 
 ---
 
-### 8. `parse_lab_requirements`
+### 6. `parse_lab_requirements`
 Mô tả: Sử dụng AI để phân tích yêu cầu bài lab nhóm thành các task nhỏ, ước lượng timeline/phase và tạo checklist tương ứng.
 
 #### Tham số đầu vào (Input Parameters):
@@ -351,7 +259,7 @@ Mô tả: Sử dụng AI để phân tích yêu cầu bài lab nhóm thành các
 
 ---
 
-### 9. `assign_task`
+### 7. `assign_task`
 Mô tả: Phân công task và checklist cho từng thành viên trên Discord sau khi Nhóm trưởng đã xác nhận chia công việc. Trả về danh sách Markdown Checklist để Bot gửi trực tiếp vào channel nhóm Discord.
 
 #### Tham số đầu vào (Input Parameters):
@@ -384,7 +292,7 @@ Mô tả: Phân công task và checklist cho từng thành viên trên Discord s
 
 ---
 
-### 10. `track_group_progress`
+### 8. `track_group_progress`
 Mô tả: Tổng hợp phần trăm hoàn thành, danh sách task đã xong / chưa xong của tất cả thành viên trong nhóm.
 
 #### Tham số đầu vào (Input Parameters):
@@ -428,7 +336,7 @@ Mô tả: Tổng hợp phần trăm hoàn thành, danh sách task đã xong / ch
 
 ---
 
-### 11. `generate_reflection`
+### 9. `generate_reflection`
 Mô tả: Tổng hợp lịch sử làm bài, mức độ hoàn thành task và thái độ hợp tác của học viên để sinh bài đánh giá/reflection cá nhân.
 
 #### Tham số đầu vào (Input Parameters):
@@ -461,7 +369,7 @@ Mô tả: Tổng hợp lịch sử làm bài, mức độ hoàn thành task và 
 
 ---
 
-### 12. `schedule_reminder`
+### 10. `schedule_reminder`
 Mô tả: Thiết lập lịch thông báo tự động (Timer / Cron) để nhắc học viên cập nhật tiến độ hoặc thông báo khi sắp đến deadline.
 
 #### Tham số đầu vào (Input Parameters):
@@ -492,7 +400,7 @@ Mô tả: Thiết lập lịch thông báo tự động (Timer / Cron) để nh�
 
 ---
 
-### 13. `extend_deadline`
+### 11. `extend_deadline`
 Mô tả: Cập nhật giãn mốc thời gian hoàn thành task cho học viên trong trường hợp gặp khó khăn kỹ thuật hoặc lý do khách quan.
 
 #### Tham số đầu vào (Input Parameters):
@@ -525,7 +433,7 @@ Mô tả: Cập nhật giãn mốc thời gian hoàn thành task cho học viên
 
 ---
 
-### 14. `analyze_student_issue`
+### 12. `analyze_student_issue`
 Mô tả: Tiếp nhận mô tả sự cố/log lỗi của học viên, phân tích nguyên nhân và đưa ra hướng dẫn khắc phục cụ thể.
 
 #### Tham số đầu vào (Input Parameters):
@@ -557,7 +465,7 @@ Mô tả: Tiếp nhận mô tả sự cố/log lỗi của học viên, phân t�
 
 ---
 
-### 15. `fetch_peer_solution`
+### 13. `fetch_peer_solution`
 Mô tả: Tìm kiếm các thành viên trong cùng nhóm đã hoàn thành task tương tự/liên quan để trả về đoạn mã nguồn tham khảo (Code Block) trực tiếp trên Discord.
 
 #### Tham số đầu vào (Input Parameters):
