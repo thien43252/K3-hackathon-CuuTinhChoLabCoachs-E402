@@ -1,5 +1,6 @@
 """
 Module chứa các công cụ Tương tác Nền tảng & Ngữ cảnh (Platform & Context Tools).
+Sử dụng CSDL SQLite thực tế (`users`, `rooms`, `messages`).
 Bao gồm:
 4. get_user_context
 5. create_group_room
@@ -7,59 +8,12 @@ Bao gồm:
 7. send_notification
 """
 
+import json
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
-# Mock Store lưu trữ thông tin người dùng và room chat
-_USER_DATABASE: Dict[str, Dict[str, Any]] = {
-    "U123456": {
-        "user_id": "U123456",
-        "full_name": "Pham Duc Thien",
-        "role": "group_leader",
-        "group_id": "G01",
-        "today_lab": {
-            "lab_id": "LAB05_GROUP",
-            "type": "group",
-            "title": "Xây dựng AI Agent Workflow"
-        }
-    },
-    "U789012": {
-        "user_id": "U789012",
-        "full_name": "Nguyen Van A",
-        "role": "member",
-        "group_id": "G01",
-        "today_lab": {
-            "lab_id": "LAB05_GROUP",
-            "type": "group",
-            "title": "Xây dựng AI Agent Workflow"
-        }
-    },
-    "U345678": {
-        "user_id": "U345678",
-        "full_name": "Tran Thi B",
-        "role": "member",
-        "group_id": "G01",
-        "today_lab": {
-            "lab_id": "LAB05_GROUP",
-            "type": "group",
-            "title": "Xây dựng AI Agent Workflow"
-        }
-    },
-    "U999999": {
-        "user_id": "U999999",
-        "full_name": "Le Van C",
-        "role": "student",
-        "group_id": None,
-        "today_lab": {
-            "lab_id": "LAB05_INDIVIDUAL",
-            "type": "individual",
-            "title": "Bài lab cá nhân Python Basis"
-        }
-    }
-}
-
-_ROOMS_STORE: Dict[str, Dict[str, Any]] = {}
+from app.core.db import get_db_connection
 
 
 class GetUserContextInput(BaseModel):
@@ -92,12 +46,7 @@ def get_user_context(
 ) -> Dict[str, Any]:
     """
     4. get_user_context
-    Mô tả: Lấy thông tin chi tiết về người dùng đang gọi bot, lịch làm lab trong ngày và danh sách nhóm.
-    
-    Trường hợp lỗi cover:
-    - 400 Bad Request: user_id rỗng.
-    - 404 Not Found: Không tìm thấy học viên hoặc không có bài lab nào trong ngày.
-    - 500 Internal Error: Lỗi kết nối dịch vụ user (khi user_id chứa 'TRIGGER_500').
+    Mô tả: Lấy thông tin chi tiết về người dùng đang gọi bot từ SQLite DB.
     """
     try:
         if not user_id or not user_id.strip():
@@ -114,45 +63,58 @@ def get_user_context(
                 "message": "Không thể kết nối đến hệ thống quản lý học viên."
             }
 
-        user_data = _USER_DATABASE.get(user_id)
-        if not user_data:
-            # Nếu user lạ, kiểm tra xem có cờ NO_LAB hay không
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+        user_row = cursor.fetchone()
+
+        if not user_row:
             if "NOLAB" in user_id:
+                conn.close()
                 return {
                     "status": "empty",
                     "error_code": "NO_LAB_TODAY",
                     "message": "Không tìm thấy lịch bài lab nào cho học viên trong ngày hôm nay."
                 }
-            # Mặc định trả về context mẫu nếu là user bất kỳ
-            user_data = {
-                "user_id": user_id,
-                "full_name": f"Học viên {user_id}",
-                "role": "student",
-                "group_id": None,
-                "today_lab": {
-                    "lab_id": "LAB05_INDIVIDUAL",
-                    "type": "individual",
-                    "title": "Bài lab cá nhân"
-                }
-            }
+            # Mặc định thêm mới user học viên mẫu vào DB nếu chưa tồn tại
+            cursor.execute(
+                """
+                INSERT INTO users (user_id, full_name, role, group_id, today_lab_id, today_lab_type, today_lab_title)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (user_id, f"Học viên {user_id}", "student", None, "LAB05_INDIVIDUAL", "individual", "Bài lab cá nhân")
+            )
+            conn.commit()
+            cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+            user_row = cursor.fetchone()
 
         group_info = None
-        if user_data.get("group_id"):
-            gid = user_data["group_id"]
-            members = [uid for uid, u in _USER_DATABASE.items() if u.get("group_id") == gid]
+        group_id = user_row["group_id"]
+        if group_id:
+            cursor.execute("SELECT user_id FROM users WHERE group_id = ?", (group_id,))
+            member_rows = cursor.fetchall()
+            members_list = [r["user_id"] for r in member_rows]
             group_info = {
-                "group_id": gid,
-                "members": members if members else [user_id]
+                "group_id": group_id,
+                "members": members_list if members_list else [user_id]
             }
+
+        today_lab = {
+            "lab_id": user_row["today_lab_id"] or "LAB05_INDIVIDUAL",
+            "type": user_row["today_lab_type"] or "individual",
+            "title": user_row["today_lab_title"] or "Bài lab"
+        }
+
+        conn.close()
 
         return {
             "status": "success",
             "user": {
-                "user_id": user_data["user_id"],
-                "full_name": user_data["full_name"],
-                "role": user_data["role"]
+                "user_id": user_row["user_id"],
+                "full_name": user_row["full_name"],
+                "role": user_row["role"]
             },
-            "today_lab": user_data["today_lab"],
+            "today_lab": today_lab,
             "group_info": group_info
         }
     except Exception as e:
@@ -170,12 +132,7 @@ def create_group_room(
 ) -> Dict[str, Any]:
     """
     5. create_group_room
-    Mô tả: Tự động tạo channel/room chat nhóm trên nền tảng (Slack/Discord/Teams) và gửi lời mời.
-    
-    Trường hợp lỗi cover:
-    - 400 Bad Request: room_name rỗng hoặc danh sách member_ids rỗng.
-    - 207 Multi-Status: Tạo room thành công nhưng một số thành viên không tồn tại.
-    - 500 Internal Error: Lỗi API nền tảng chat (khi room_name chứa 'TRIGGER_500').
+    Mô tả: Tự động tạo channel/room chat nhóm và ghi nhận thông tin vào SQLite DB.
     """
     try:
         if not room_name or not room_name.strip() or not member_ids:
@@ -203,13 +160,28 @@ def create_group_room(
 
         room_id = f"1298{abs(hash(room_name)) % 100000000000000}"
         discord_channel_name = f"group-{room_name.lower().replace(' ', '-')}"
+        created_at = datetime.now(timezone.utc).isoformat()
 
-        _ROOMS_STORE[room_id] = {
-            "room_id": room_id,
-            "room_name": room_name,
-            "members": added_members,
-            "is_private": is_private
-        }
+        # Lưu room vào CSDL SQLite
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO rooms (room_id, room_name, discord_channel_id, channel_name, added_members, is_private, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                room_id,
+                room_name,
+                room_id,
+                discord_channel_name,
+                json.dumps(added_members, ensure_ascii=False),
+                1 if is_private else 0,
+                created_at
+            )
+        )
+        conn.commit()
+        conn.close()
 
         if failed_members:
             return {
@@ -243,11 +215,7 @@ def send_message(
 ) -> Dict[str, Any]:
     """
     6. send_message
-    Mô tả: Gửi tin nhắn hướng dẫn, phân công task hoặc trao đổi trực tiếp với học viên hoặc kênh nhóm.
-    
-    Trường hợp lỗi cover:
-    - 400 Bad Request: target_id hoặc nội dung message rỗng.
-    - 403 Forbidden / Error: Người dùng chặn bot hoặc room_id không tồn tại.
+    Mô tả: Gửi tin nhắn hướng dẫn và lưu lịch sử vào SQLite DB.
     """
     try:
         if not target_id or not target_id.strip() or not message or not message.strip():
@@ -266,6 +234,25 @@ def send_message(
 
         msg_id = f"MSG_{abs(hash(message + datetime.now(timezone.utc).isoformat())) % 1000000}"
         delivered_at = datetime.now(timezone.utc).isoformat()
+
+        # Lưu tin nhắn vào CSDL SQLite
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO messages (message_id, target_id, message, attachments, delivered_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                msg_id,
+                target_id,
+                message,
+                json.dumps(attachments or [], ensure_ascii=False),
+                delivered_at
+            )
+        )
+        conn.commit()
+        conn.close()
 
         return {
             "status": "success",
@@ -288,11 +275,7 @@ def send_notification(
 ) -> Dict[str, Any]:
     """
     7. send_notification
-    Mô tả: Tag tên học viên (@username) hoặc phát thông báo khẩn cấp/nhắc nhở quan trọng trong kênh làm việc.
-    
-    Trường hợp lỗi cover:
-    - 400 Bad Request: room_id hoặc nội dung content rỗng.
-    - 500 Internal Error: Hệ thống push notification bị sập (khi room_id chứa 'TRIGGER_500').
+    Mô tả: Tag tên học viên (@username) hoặc phát thông báo khẩn cấp trong kênh làm việc.
     """
     try:
         if not room_id or not room_id.strip() or not content or not content.strip():
@@ -311,6 +294,26 @@ def send_notification(
 
         notified_count = len(user_ids_to_tag)
         formatted_mentions = [f"<@{uid}>" if not uid.startswith("<@") else uid for uid in user_ids_to_tag]
+
+        # Ghi log thông báo vào SQLite messages DB
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        msg_id = f"NOTIF_{abs(hash(content + datetime.now(timezone.utc).isoformat())) % 1000000}"
+        cursor.execute(
+            """
+            INSERT INTO messages (message_id, target_id, message, attachments, delivered_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                msg_id,
+                room_id,
+                f"[{urgency.upper()}] Mentions: {', '.join(formatted_mentions)} - {content}",
+                json.dumps([], ensure_ascii=False),
+                datetime.now(timezone.utc).isoformat()
+            )
+        )
+        conn.commit()
+        conn.close()
 
         return {
             "status": "success",
