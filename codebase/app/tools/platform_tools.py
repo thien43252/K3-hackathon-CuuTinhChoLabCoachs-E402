@@ -69,6 +69,65 @@ def _run_discord_coro(coro, timeout: float = 10.0):
         return None
 
 
+def _resolve_member_by_name_or_id(guild: discord.Guild, identifier: str) -> Optional[discord.Member]:
+    """Helper to resolve a Discord member by ID, mention, or name (display name / username)"""
+    if not identifier:
+        return None
+        
+    identifier = str(identifier).strip()
+    
+    # 1. Dạng mention: <@123456789> hoặc <@!123456789>
+    if identifier.startswith("<@") and identifier.endswith(">"):
+        clean_id = identifier.replace("<@", "").replace("!", "").replace("&", "").replace(">", "")
+        if clean_id.isdigit():
+            member_id = int(clean_id)
+            member = guild.get_member(member_id)
+            if not member:
+                try:
+                    member = _run_discord_coro(guild.fetch_member(member_id))
+                except Exception:
+                    pass
+            return member
+
+    # 2. Dạng chuỗi số ID nguyên bản
+    if identifier.isdigit():
+        member_id = int(identifier)
+        member = guild.get_member(member_id)
+        if not member:
+            try:
+                member = _run_discord_coro(guild.fetch_member(member_id))
+            except Exception:
+                pass
+        return member
+
+    # 3. Tìm kiếm theo tên (Display Name hoặc Username) trong cache guild.members
+    name_lower = identifier.lower()
+    
+    # Thử tìm khớp hoàn toàn (exact match)
+    for m in guild.members:
+        if m.display_name.lower() == name_lower or m.name.lower() == name_lower:
+            return m
+            
+    # Thử tìm khớp một phần (substring match)
+    for m in guild.members:
+        if name_lower in m.display_name.lower() or name_lower in m.name.lower():
+            return m
+
+    # 4. Thử tìm bằng guild.query_members (gọi API Discord) nếu cache không tìm thấy
+    try:
+        members = _run_discord_coro(guild.query_members(query=identifier, limit=5))
+        if members:
+            # Ưu tiên khớp hoàn toàn
+            for m in members:
+                if m.display_name.lower() == name_lower or m.name.lower() == name_lower:
+                    return m
+            return members[0]
+    except Exception:
+        pass
+
+    return None
+
+
 def get_user_context(
     user_id: str,
     date: Optional[str] = None
@@ -276,37 +335,23 @@ def verify_discord_members(member_ids: List[str]) -> Dict[str, Any]:
                 }
 
             for uid in member_ids:
-                try:
-                    member_id = int(uid) if uid.isdigit() else uid
-                    member = guild.get_member(member_id)
-                    if member:
-                        valid.append({
-                            "user_id": str(member.id),
-                            "name": member.display_name
-                        })
-                    else:
-                        # Thử fetch từ API (không chỉ cache)
-                        try:
-                            fetched = _run_discord_coro(guild.fetch_member(member_id))
-                            if fetched:
-                                valid.append({
-                                    "user_id": str(fetched.id),
-                                    "name": fetched.display_name
-                                })
-                                continue
-                        except Exception:
-                            pass
-                        invalid.append({"user_id": uid, "reason": "Member not in guild"})
-                except (ValueError, TypeError):
-                    invalid.append({"user_id": uid, "reason": "Invalid user ID"})
+                member = _resolve_member_by_name_or_id(guild, uid)
+                if member:
+                    valid.append({
+                        "user_id": str(member.id),
+                        "name": member.display_name
+                    })
+                else:
+                    invalid.append({"user_id": uid, "reason": "Member not in guild"})
         else:
             # ── Mock/CLI mode ──
             for uid in member_ids:
                 if uid.startswith("INVALID_") or uid == "U_UNKNOWN":
                     invalid.append({"user_id": uid, "reason": "User not found"})
                 else:
+                    mock_id = uid if uid.isdigit() or uid.startswith("U") else f"U_{uid.lower()}"
                     valid.append({
-                        "user_id": uid,
+                        "user_id": mock_id,
                         "name": f"User {uid}"
                     })
 
@@ -336,6 +381,7 @@ def create_group_room(
     Mô tả: Tự động tạo channel/room chat nhóm và ghi nhận thông tin vào SQLite DB.
     Nên gọi verify_discord_members TRƯỚC để đảm bảo tất cả thành viên hợp lệ.
     Room được tạo ở chế độ private (chỉ thành viên trong nhóm mới thấy).
+    Chỉ tạo phòng khi TẤT CẢ thành viên trong danh sách đều hợp lệ.
     """
     try:
         if not room_name or not room_name.strip() or not member_ids:
@@ -366,26 +412,38 @@ def create_group_room(
                         guild.default_role: discord.PermissionOverwrite(read_messages=False),
                         guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
                     }
-                    # Phân quyền cho từng member
-                    added_members = []
-                    failed_members = []
-                    for uid in member_ids:
-                        try:
-                            member_id = int(uid) if uid.isdigit() else uid
-                            member = guild.get_member(member_id)
-                            if member:
-                                overwrites[member] = discord.PermissionOverwrite(
-                                    read_messages=True, send_messages=True,
-                                    embed_links=True, attach_files=True
-                                )
-                                added_members.append(str(member.id))
-                            else:
-                                failed_members.append({"user_id": uid, "reason": "Member not in guild"})
-                        except (ValueError, TypeError):
-                            failed_members.append({"user_id": uid, "reason": "Invalid user ID"})
-                else:
-                    added_members = list(member_ids)
-                    failed_members = []
+                    # Phân quyền cho từng member (hỗ trợ ID số hoặc tên)
+                added_members = []
+                failed_members = []
+
+                for uid in member_ids:
+                    member = _resolve_member_by_name_or_id(guild, uid)
+                    if member:
+                        overwrites[member] = discord.PermissionOverwrite(
+                            read_messages=True, send_messages=True,
+                            embed_links=True, attach_files=True
+                        )
+                        added_members.append(str(member.id))
+                    else:
+                        failed_members.append({
+                            "user_id": uid,
+                            "reason": "Không tìm thấy trên server",
+                            "hint": f"Hãy @mention trực tiếp người dùng '{uid}', hoặc dùng đúng tên hiển thị Discord của họ"
+                        })
+
+                if failed_members:
+                    failed_list = "\n".join([
+                        f"  • `{m['user_id']}` — {m['reason']}. {m.get('hint', '')}"
+                        for m in failed_members
+                    ])
+                    return {
+                        "status": "empty",
+                        "error_code": "INVALID_MEMBERS",
+                        "message": f"Không thể tạo phòng vì {len(failed_members)}/{len(member_ids)} thành viên không tìm thấy trên server:\n{failed_list}\n\n💡 **Cách khắc phục:** @mention trực tiếp người dùng (gõ @ và chọn tên), hoặc dùng đúng tên hiển thị Discord (display name) của họ.",
+                        "failed_members": failed_members,
+                        "valid_count": len(added_members),
+                        "invalid_count": len(failed_members),
+                    }
 
                 try:
                     channel = _run_discord_coro(
@@ -418,16 +476,6 @@ def create_group_room(
                         except Exception as db_exc:
                             print(f"⚠️ [DiscordBridge] create_group_room DB save failed: {db_exc}")
 
-                        if failed_members:
-                            return {
-                                "status": "partial_success",
-                                "room_id": room_id,
-                                "discord_channel_id": room_id,
-                                "channel_name": channel_name,
-                                "added_members": added_members,
-                                "failed_members": failed_members
-                            }
-
                         return {
                             "status": "success",
                             "room_id": room_id,
@@ -445,9 +493,23 @@ def create_group_room(
 
         for uid in member_ids:
             if uid.startswith("INVALID_") or uid == "U_UNKNOWN":
-                failed_members.append({"user_id": uid, "reason": "User not found"})
+                failed_members.append({"user_id": uid, "reason": "Không tìm thấy"})
             else:
                 added_members.append(uid)
+
+        if failed_members:
+            failed_list = "\n".join([
+                f"  • `{m['user_id']}` — {m['reason']}"
+                for m in failed_members
+            ])
+            return {
+                "status": "empty",
+                "error_code": "INVALID_MEMBERS",
+                "message": f"Không tìm thấy {len(failed_members)}/{len(member_ids)} thành viên:\n{failed_list}\n\n💡 Hãy @mention trực tiếp người dùng (gõ @ và chọn tên).",
+                "failed_members": failed_members,
+                "valid_count": len(added_members),
+                "invalid_count": len(failed_members),
+            }
 
         room_id = f"1298{abs(hash(room_name)) % 100000000000000}"
         discord_channel_name = f"group-{room_name.lower().replace(' ', '-')}"
@@ -473,16 +535,6 @@ def create_group_room(
         )
         conn.commit()
         conn.close()
-
-        if failed_members:
-            return {
-                "status": "partial_success",
-                "room_id": room_id,
-                "discord_channel_id": room_id,
-                "channel_name": discord_channel_name,
-                "added_members": added_members,
-                "failed_members": failed_members
-            }
 
         return {
             "status": "success",
