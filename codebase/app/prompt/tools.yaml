@@ -37,10 +37,18 @@ tools:
 
   - name: create_group_room
     description: >
-      Tạo Text Channel riêng tư trên Discord cho nhóm làm lab.
-      Tự động kiểm tra thành viên có tồn tại trên server hay không.
-      Nếu có thành viên không tồn tại, trả về danh sách failed_members để Agent báo lại cho người dùng.
-      Channel được tạo ở chế độ private (chỉ các thành viên trong nhóm mới nhìn thấy).
+      Tạo Text Channel riêng tư trên Discord cho nhóm. Chỉ thành viên trong nhóm mới thấy.
+
+      CÁCH DÙNG: Gọi 1 lần với member_ids — tool tự resolve ID hoặc tên.
+      ⚠️ ƯU TIÊN @mention: yêu cầu leader @mention từng thành viên (gõ @ rồi chọn tên).
+      @mention chứa Discord ID chính xác → 100% resolve được, không bao giờ sai.
+      Chỉ dùng tên thường nếu leader không thể @mention (vd: copy text từ nơi khác).
+
+      XỬ LÝ KẾT QUẢ:
+      - success → báo: "Đã tạo phòng #xxx cho {members}. Giờ bàn phân công vai trò nhé."
+      - empty + INVALID_MEMBERS → đọc failed_members (có hint). Báo: "Không tìm thấy {tên}.
+        Bạn @mention họ (gõ @ rồi chọn tên) để mình thêm chính xác nhé."
+        ĐỢI leader sửa → gọi lại tool.
     parameters:
       type: object
       properties:
@@ -50,7 +58,7 @@ tools:
         member_ids:
           type: array
           items: {type: string}
-          description: "Danh sách Discord User ID của các thành viên trong nhóm."
+          description: "Danh sách Discord User ID hoặc tên hiển thị/username của các thành viên (ví dụ: ['910523601546014742', 'Duy', 'Thien'] - hãy truyền tên nếu không biết ID số, tuyệt đối không tự đoán ID số)."
         is_private:
           type: boolean
           default: true

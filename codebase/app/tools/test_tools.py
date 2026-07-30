@@ -48,8 +48,8 @@ def run_tests():
     assert "discord_channel_id" in res, f"Missing discord_channel_id: {res}"
     assert "channel_name" in res, f"Missing channel_name: {res}"
     res_part = create_group_room(room_name="lab05-group-01", member_ids=["U123456", "INVALID_999"])
-    assert res_part["status"] == "partial_success", f"Failed partial case: {res_part}"
-    assert "discord_channel_id" in res_part, f"Missing discord_channel_id in partial: {res_part}"
+    assert res_part["status"] == "empty", f"Failed partial case: {res_part}"
+    assert "error_code" in res_part, f"Missing error_code: {res_part}"
     print("  [OK] PASS: create_group_room")
 
     # 3. send_message

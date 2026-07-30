@@ -89,62 +89,63 @@ async def on_message(message):
 
     await bot.process_commands(message)
 
-    # Chỉ trả lời tin nhắn thường nếu KHÔNG bắt đầu bằng dấu command !
-    if not message.content.startswith("!"):
-        # Cập nhật context Discord hiện tại để platform_tools có thể gửi tin nhắn thật
-        if message.guild:
-            discord_context.set_current_channel(message.guild.id, message.channel.id)
+    # Chỉ trả lời khi bot được @mention
+    if bot.user not in message.mentions:
+        return
 
-        async with message.channel.typing():
-            user_id = str(message.author.id)
-            if user_id not in user_histories:
-                user_histories[user_id] = []
-            
-            user_histories[user_id].append({"role": "user", "content": message.content})
-            
-            # Giới hạn lịch sử hội thoại ở mức 10 tin nhắn gần nhất (5 lượt trao đổi)
-            if len(user_histories[user_id]) > 10:
-                user_histories[user_id] = user_histories[user_id][-10:]
+    # Cập nhật context Discord
+    if message.guild:
+        discord_context.set_current_channel(message.guild.id, message.channel.id)
 
-            # Cung cấp ngữ cảnh Discord User ID cho Agent để tự động gọi get_user_context nếu cần
-            # Xác định loại kênh: general hay group_room
-            channel_type = "general"
-            try:
-                conn = get_db_connection()
-                cursor = conn.cursor()
-                cursor.execute("SELECT 1 FROM rooms WHERE discord_channel_id = ?", (str(message.channel.id),))
-                if cursor.fetchone():
-                    channel_type = "group_room"
-                conn.close()
-            except Exception:
-                pass
+    async with message.channel.typing():
+        user_id = str(message.author.id)
+        if user_id not in user_histories:
+            user_histories[user_id] = []
 
-            discord_ctx_str = f"\n\n[Discord Context - Current User: {message.author.name} (ID: {message.author.id}), Channel: {message.channel.name} (ID: {message.channel.id}), Channel Type: {channel_type}]"
+        user_histories[user_id].append({"role": "user", "content": message.content})
 
-            messages_to_send = [
-                {"role": "system", "content": f"{system_prompt}{discord_ctx_str}"},
-                *user_histories[user_id]
-            ]
+        # Giới hạn lịch sử hội thoại ở mức 10 tin nhắn gần nhất (5 lượt trao đổi)
+        if len(user_histories[user_id]) > 10:
+            user_histories[user_id] = user_histories[user_id][-10:]
 
-            try:
-                loop = asyncio.get_running_loop()
-                result = await loop.run_in_executor(
-                    None,
-                    lambda: call_agent_loop(messages_to_send)
-                )
+        # Xác định loại kênh: general hay group_room
+        channel_type = "general"
+        try:
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM rooms WHERE discord_channel_id = ?", (str(message.channel.id),))
+            if cursor.fetchone():
+                channel_type = "group_room"
+            conn.close()
+        except Exception:
+            pass
 
-                assistant_text = result.get("assistant_text", "Không có phản hồi từ Agent.")
-                user_histories[user_id].append({"role": "assistant", "content": assistant_text})
+        discord_ctx_str = f"\n\n[Discord Context - Current User: {message.author.name} (ID: {message.author.id}), Channel: {message.channel.name} (ID: {message.channel.id}), Channel Type: {channel_type}]"
 
-                # Discord giới hạn tin nhắn tối đa 2000 ký tự
-                if len(assistant_text) > 2000:
-                    for i in range(0, len(assistant_text), 1900):
-                        await message.channel.send(assistant_text[i:i+1900])
-                else:
-                    await message.channel.send(assistant_text)
-            except Exception as e:
-                print(f"❌ Lỗi Agent xử lý tin nhắn: {e}")
-                await message.channel.send(f"❌ Trợ lý AI đang gặp sự cố khi xử lý yêu cầu của bạn: {e}")
+        messages_to_send = [
+            {"role": "system", "content": f"{system_prompt}{discord_ctx_str}"},
+            *user_histories[user_id]
+        ]
+
+        try:
+            loop = asyncio.get_running_loop()
+            result = await loop.run_in_executor(
+                None,
+                lambda: call_agent_loop(messages_to_send)
+            )
+
+            assistant_text = result.get("assistant_text", "Không có phản hồi từ Agent.")
+            user_histories[user_id].append({"role": "assistant", "content": assistant_text})
+
+            # Discord giới hạn tin nhắn tối đa 2000 ký tự
+            if len(assistant_text) > 2000:
+                for i in range(0, len(assistant_text), 1900):
+                    await message.channel.send(assistant_text[i:i+1900])
+            else:
+                await message.channel.send(assistant_text)
+        except Exception as e:
+            print(f"❌ Lỗi Agent xử lý tin nhắn: {e}")
+            await message.channel.send(f"❌ Trợ lý AI đang gặp sự cố khi xử lý yêu cầu của bạn: {e}")
 
 # ==========================================
 # SLASH COMMAND: /make-plan

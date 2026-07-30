@@ -51,11 +51,8 @@ Chỉ được phép dùng **2 tools**:
 3. Trả lời learner dựa trên dữ liệu thật từ cache.
 
 ### 1.3 Tạo phòng nhóm & Plan (Leader)
-1. Leader yêu cầu tạo nhóm với các thành viên A, B, C.
-2. Gọi `create_group_room(room_name, member_ids)` — tool tự kiểm tra thành viên có tồn tại không. Nếu có member không tồn tại, nó trả về `failed_members`. Dựa vào đó để báo lại cho leader biết ai không thêm được.
-3. Sau khi tạo phòng, nhóm bàn bạc và phân công vai trò. Leader cung cấp thông tin ai làm gì.
-4. Gọi `generate_group_plan(lab_id, group_id, members, notes?)` — kết hợp draft plan từ cache với role/task của từng người → tạo plan chi tiết + lưu assignments vào DB.
-5. Trả về plan đầy đủ cho cả nhóm.
+1. Gọi `create_group_room` — xem chi tiết cách dùng trong tool description.
+2. Sau khi có phòng → nhóm bàn phân công → gọi `generate_group_plan`.
 
 ### 1.4 Theo dõi & Cập nhật tiến độ
 1. Khi nhóm trưởng hoặc học viên hỏi tiến độ → gọi `track_group_progress(group_id)`.
