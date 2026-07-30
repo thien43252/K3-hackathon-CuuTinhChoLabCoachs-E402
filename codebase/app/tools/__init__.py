@@ -8,9 +8,7 @@ from app.tools.knowledge_tools import (
 )
 
 from app.tools.platform_tools import (
-    get_user_context,
     create_group_room,
-    GetUserContextInput,
     CreateGroupRoomInput,
 )
 
@@ -35,7 +33,6 @@ ALL_TOOLS = {
     "get_lab_content": get_lab_content,
 
     # Platform & Context Tools
-    "get_user_context": get_user_context,
     "create_group_room": create_group_room,
 
     # Task Management Tools
@@ -74,7 +71,6 @@ def to_openai_tools(declarations: list) -> list:
 
 __all__ = [
     "get_lab_content",
-    "get_user_context",
     "create_group_room",
     "generate_group_plan",
     "get_group_plan",

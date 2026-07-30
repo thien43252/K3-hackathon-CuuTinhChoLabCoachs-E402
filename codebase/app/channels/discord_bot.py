@@ -1,7 +1,9 @@
 import asyncio
+import json
 import discord
 from discord.ext import commands
 from discord import app_commands
+from datetime import datetime, timezone
 from app.core.config import settings
 from app.services.repo_service import LabContentService
 
@@ -110,17 +112,71 @@ async def on_message(message):
 
         # Xác định loại kênh: general hay group_room
         channel_type = "general"
+        group_id = None
+        members_info = []
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
-            cursor.execute("SELECT 1 FROM rooms WHERE discord_channel_id = ?", (str(message.channel.id),))
-            if cursor.fetchone():
+            cursor.execute("SELECT * FROM rooms WHERE discord_channel_id = ?", (str(message.channel.id),))
+            room = cursor.fetchone()
+            if room:
                 channel_type = "group_room"
+                group_id = room["room_name"]
+                # Resolve members (ID + display name) để agent có thể identify ai là ai dù không @mention
+                member_ids = json.loads(room["added_members"]) if room.get("added_members") else []
+                for mid in member_ids:
+                    try:
+                        member = message.guild.get_member(int(mid))
+                        if member:
+                            members_info.append({"id": str(member.id), "name": member.display_name})
+                        else:
+                            members_info.append({"id": mid, "name": mid})
+                    except (ValueError, TypeError):
+                        members_info.append({"id": mid, "name": mid})
             conn.close()
         except Exception:
             pass
 
-        discord_ctx_str = f"\n\n[Discord Context - Current User: {message.author.name} (ID: {message.author.id}), Channel: {message.channel.name} (ID: {message.channel.id}), Channel Type: {channel_type}]"
+        # Resolve lab_id từ lab_materials theo ngày hôm nay
+        lab_id = None
+        try:
+            today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            conn = get_db_connection()
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT lab_id FROM lab_materials WHERE lab_date <= ? ORDER BY lab_date DESC LIMIT 1",
+                (today_str,)
+            )
+            row = cursor.fetchone()
+            if row:
+                lab_id = row["lab_id"]
+            conn.close()
+        except Exception:
+            pass
+
+        # Set context cho tools dùng (user_id, group_id, members, lab_id tự động resolve)
+        discord_context.set_context(
+            user_id=user_id,
+            channel_type=channel_type,
+            group_id=group_id,
+            members=members_info,
+            lab_id=lab_id,
+        )
+
+        # Build context string cho agent system prompt
+        discord_ctx_str = (
+            f"\n\n[Discord Context]\n"
+            f"Current User: {message.author.name} (ID: {user_id})\n"
+            f"Channel: {message.channel.name} (ID: {message.channel.id})\n"
+            f"Channel Type: {channel_type}\n"
+        )
+        if lab_id:
+            discord_ctx_str += f"Today Lab: {lab_id}\n"
+        if group_id and members_info:
+            discord_ctx_str += f"Group ID: {group_id}\n"
+            discord_ctx_str += "Members in this room:\n"
+            for m in members_info:
+                discord_ctx_str += f"- {m['name']} (ID: {m['id']})\n"
 
         messages_to_send = [
             {"role": "system", "content": f"{system_prompt}{discord_ctx_str}"},
@@ -152,35 +208,73 @@ async def on_message(message):
 # ==========================================
 
 @bot.tree.command(name="make-plan", description="Tạo bản kế hoạch nháp (Draft Plan) cho một bài Lab")
-@app_commands.describe(lab_number="Số thứ tự của bài Lab (ví dụ: 1, 2, 3...)")
-async def make_plan(interaction: discord.Interaction, lab_number: int):
-    plan_content = (
-        f"📋 **BẢN KẾ HOẠCH DRAFT - HỌC PHẦN LAB {lab_number}**\n"
-        f"*Dựa trên tài liệu hướng dẫn và lịch trình dự án (README.md)*\n"
-        f"--------------------------------------------------\n"
-        f"🏆 **Mục tiêu chính:** Hoàn thành bài toán thực chiến Lab {lab_number} theo quy trình 6 mốc Checkpoint.\n\n"
-        f"⏱️ **Lịch trình và Các cột mốc quan trọng:**\n"
-        f"1️⃣ **CP1 (09:00 - 10:00 Ngày 1) - Chốt Canvas:**\n"
-        f"   - Xác định rõ Job Executor, Job Story.\n"
-        f"   - Tìm ra Painpoint có bằng chứng (Khảo sát ≥20 người / Mining data).\n"
-        f"   - Chọn lát cắt 1 câu: *1 user · 1 việc · 1 quyết định AI · 1 kết quả*.\n\n"
-        f"2️⃣ **CP2 (10:00 - 12:00 Ngày 1) - Interactive Flow:**\n"
-        f"   - Dựng khung UI/UX cơ bản (có thể mock data, flow bấm đi hết được).\n"
-        f"   - Phân chia nhiệm vụ cụ thể cho từng thành viên trong nhóm.\n\n"
-        f"3️⃣ **CP3 (12:00 - 16:00 Ngày 1) - AI Integration & First Eval:**\n"
-        f"   - Tích hợp ít nhất 1 lệnh gọi AI chạy thực tế.\n"
-        f"   - Thiết lập bộ dữ liệu kiểm thử (Golden Set ≥20 cases) và thực hiện đo lường lượt 1.\n\n"
-        f"4️⃣ **CP4 (16:00 - 17:30 Ngày 1) - Đo đạc & Khóa Spec:**\n"
-        f"   - Xác định 4 lớp chỗ khó & 8 kịch bản lỗi tiềm năng.\n"
-        f"   - Chốt chất lượng (Quality Bar) và nộp tài liệu `spec.md` trước hạn chót 23:59.\n\n"
-        f"5️⃣ **CP5 (09:00 Ngày 2) - Validation & Dry Run:**\n"
-        f"   - Kiểm thử thực tế với ít nhất 5 người dùng ngoài nhóm, ghi log phản hồi.\n"
-        f"   - Chạy thử Demo (Dry Run) canh thời gian chính xác trong 5 phút.\n\n"
-        f"6️⃣ **CP6 (10:00 Ngày 2) - Final Demo:**\n"
-        f"   - Trình bày Slide 6 trang và chạy live demo (bao gồm cả trường hợp lỗi được xử lý).\n\n"
-        f"📝 *Lời khuyên:* Hãy bám sát rubric chấm điểm (04-rubric.md) để tối ưu hóa điểm số của nhóm!"
-    )
-    await interaction.response.send_message(plan_content)
+@app_commands.describe(
+    lab_number="Số thứ tự của bài Lab (ví dụ: 1, 2, 3...)",
+    requirement="Yêu cầu cụ thể của bạn cho bản kế hoạch này (ví dụ: công nghệ sử dụng, phân công...)"
+)
+async def make_plan(interaction: discord.Interaction, lab_number: int, requirement: str):
+    # 1. Kiểm tra xem lệnh có được chạy trong kênh nhóm riêng tư (room) đã được tạo hay không
+    channel_id = str(interaction.channel.id)
+    
+    def check_room_exists():
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT room_name, added_members FROM rooms WHERE discord_channel_id = ?", (channel_id,))
+        row = cursor.fetchone()
+        conn.close()
+        return row
+
+    loop = asyncio.get_event_loop()
+    room_row = await loop.run_in_executor(None, check_room_exists)
+    
+    if not room_row:
+        await interaction.response.send_message(
+            "🚫 **Lệnh không hợp lệ:** Lệnh `/make-plan` chỉ có thể được sử dụng bên trong các kênh nhóm riêng tư (Group Room) đã được Bot tạo thành công.\n"
+            "Vui lòng tạo phòng nhóm trước bằng cách nhắn tin yêu cầu Bot (ví dụ: *'tạo nhóm tên là Team A gồm U123456, U789012'*).",
+            ephemeral=True
+        )
+        return
+
+    # Defer để chờ gọi AI
+    await interaction.response.defer(ephemeral=False)
+
+    try:
+        # Gọi AI Agent complete để sinh kế hoạch dựa trên đề bài và yêu cầu cụ thể
+        default_model_name = os.getenv("DEFAULT_MODEL", "gpt-4o-mini")
+        
+        system_prompt_text = (
+            "Bạn là chuyên gia phân tích và xây dựng kế hoạch học tập cho sinh viên. "
+            "Hãy lập một bản kế hoạch nháp (Draft Plan) chi tiết cho bài Lab dựa trên số thứ tự bài Lab và yêu cầu cụ thể của học viên. "
+            "Phân tích lộ trình 6 Checkpoint (CP1 đến CP6) dựa trên yêu cầu đặc thù của người dùng. "
+            "Định dạng Markdown rõ ràng, chuyên nghiệp, hấp dẫn."
+        )
+        user_prompt_text = (
+            f"Lập kế hoạch nháp cho bài Lab {lab_number}.\n"
+            f"Yêu cầu đặc thù của học viên: {requirement}"
+        )
+        
+        response = await loop.run_in_executor(
+            None,
+            lambda: AGENT_PROVIDER.complete(
+                messages=[
+                    {"role": "system", "content": system_prompt_text},
+                    {"role": "user", "content": user_prompt_text}
+                ],
+                model=default_model_name
+            )
+        )
+        
+        plan_content = response.text or "Không thể khởi tạo kế hoạch nháp từ AI."
+        
+        await interaction.followup.send(
+            f"📋 **BẢN KẾ HOẠCH DRAFT - HỌC PHẦN LAB {lab_number}**\n"
+            f"*Dành cho phòng nhóm: **{room_row['room_name']}***\n"
+            f"--------------------------------------------------\n"
+            f"{plan_content}"
+        )
+    except Exception as e:
+        print(f"❌ Lỗi khi sinh kế hoạch /make-plan: {e}")
+        await interaction.followup.send(f"❌ Lỗi hệ thống khi khởi tạo kế hoạch nháp: {str(e)}")
 
 # ==========================================
 # ADMIN SLASH COMMANDS: Quản lý Lab Repository
@@ -208,9 +302,7 @@ async def admin_add_lab(interaction: discord.Interaction, lab_id: str, repo_url:
         )
 
         # Thêm/Cập nhật thông tin vào bảng lab_materials trong SQLite
-        # để get_user_context có thể lấy được lab hôm nay theo lab_date
-        import json
-        from datetime import datetime, timezone
+        # để agent có thể resolve lab hôm nay theo lab_date
         title = lab_data["sitemap"][0]["title"] if lab_data.get("sitemap") else f"Bài lab {lab_id}"
         description = lab_data.get("insights", {}).get("lab_objective", f"Nội dung bài lab {lab_id}")
         lab_type = "group" if "group" in lab_id.lower() or "group" in repo_url.lower() else "individual"

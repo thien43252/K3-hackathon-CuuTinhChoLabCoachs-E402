@@ -1,6 +1,9 @@
 # starter_v0 — tool declarations for Labcode Assistant Agent
 # Tool names must stay in sync across:
 #   this file -> tools/__init__.py (ALL_TOOLS) -> test_tools.py
+#
+# Lưu ý: user_id, group_id, lab_id được auto-resolve từ Discord context
+# (discord_context.py) và inject vào system prompt — KHÔNG cần truyền tham số.
 
 tools:
   # ---------------- Knowledge & Content Tools ----------------
@@ -9,7 +12,6 @@ tools:
       Lấy nội dung bài lab đã được Admin phân tích từ cache (kết quả clone repo + phân tích .md).
       Trả về mục tiêu bài lab (lab_objective), danh sách task, tiêu chí đánh giá (grading_rubrics),
       bẫy lỗi thường gặp (common_pitfalls), và danh sách tài liệu .md (sitemap).
-      Gọi tool này SAU KHI đã có lab_id từ get_user_context.
     parameters:
       type: object
       properties:
@@ -19,22 +21,6 @@ tools:
       required: [lab_id]
 
   # ---------------- Platform & Context Tools ----------------
-  - name: get_user_context
-    description: >
-      Lấy thông tin chi tiết về người dùng, lịch làm lab trong ngày (tự động tra theo lab_date),
-      vai trò và thông tin nhóm từ CSDL SQLite `users`.
-      Sử dụng đầu tiên khi nhận diện câu hỏi từ học viên để xác định vai trò và bài lab hôm nay.
-    parameters:
-      type: object
-      properties:
-        user_id:
-          type: string
-          description: "ID người dùng trên hệ thống chat (Slack/Discord/LMS)."
-        date:
-          type: string
-          description: "Ngày làm lab (định dạng YYYY-MM-DD, tùy chọn, mặc định là hôm nay)."
-      required: [user_id]
-
   - name: create_group_room
     description: >
       Tạo Text Channel riêng tư trên Discord cho nhóm. Chỉ thành viên trong nhóm mới thấy.
@@ -68,31 +54,32 @@ tools:
   # ---------------- Task Management Tools ----------------
   - name: generate_group_plan
     description: >
-      Tạo kế hoạch chi tiết cho một nhóm làm lab dựa trên draft plan (từ cache) kết hợp
-      với vai trò và task cụ thể của từng thành viên do nhóm trưởng cung cấp.
-      Gọi tool này SAU KHI nhóm đã thống nhất ai làm vai trò gì.
-      Kết quả trả về plan có phases, task cho từng người và được lưu vào DB.
+      Tạo kế hoạch CHI TIẾT cho nhóm — dạng guidebook với: việc cần làm, brainstorm, file tham khảo cụ thể, deliverable.
+      group_id được auto-resolve từ Discord context (chỉ dùng được trong group room).
+
+      Gọi SAU KHI nhóm đã thống nhất ai làm vai trò gì.
+      ⚠️ Leader @mention thành viên → AI tự điền user_id. Nếu không @mention, agent tự identify từ members list trong context.
+      ⚠️ QUAN TRỌNG: Tool trả về `summary` (Markdown guidebook) và `members_plan` (chi tiết từng người).
+      Agent PHẢI hiển thị ĐẦY ĐỦ nội dung `summary`, KHÔNG ĐƯỢC rút gọn hay tóm tắt.
+      Đây là guidebook để learner làm theo — thiếu chi tiết là mất tính thực tiễn.
     parameters:
       type: object
       properties:
         lab_id:
           type: string
-          description: "Mã bài lab."
-        group_id:
-          type: string
-          description: "Mã nhóm."
+          description: "Mã bài lab (có thể để trống để auto-resolve từ ngày hôm nay, context đã có)."
         members:
           type: array
-          description: "Danh sách thành viên kèm vai trò và task."
+          description: "Danh sách thành viên kèm vai trò. user_id từ @mention hoặc context."
           items:
             type: object
             properties:
               user_id:
                 type: string
-                description: "ID học viên."
+                description: "ID học viên — leader @mention thì agent lấy từ mention, nếu không agent tự identify từ members list trong context."
               role:
                 type: string
-                description: "Vai trò trong nhóm (ví dụ: Frontend, Backend, PM)."
+                description: "Vai trò trong nhóm (ví dụ: Frontend, Backend, AI, PM, QA, Fullstack)."
               custom_tasks:
                 type: array
                 items: {type: string}
@@ -101,72 +88,58 @@ tools:
         notes:
           type: string
           description: "Ghi chú thêm từ nhóm (ví dụ: công nghệ sử dụng, hướng tiếp cận) — tùy chọn."
-      required: [lab_id, group_id, members]
+      required: [lab_id, members]
 
   - name: get_group_plan
     description: >
-      Đọc kế hoạch hiện tại của một nhóm từ DB.
-      Trả về plan chi tiết (phases, members, tasks, objective) nếu đã được tạo.
-      Gọi tool này khi cần xem lại plan đã tạo trước đó.
+      Đọc kế hoạch hiện tại của nhóm từ DB.
+      group_id được auto-resolve từ Discord context (chỉ dùng được trong group room).
+      Không cần tham số — code tự biết đang ở nhóm nào.
     parameters:
       type: object
-      properties:
-        group_id:
-          type: string
-          description: "Mã nhóm cần lấy plan."
-      required: [group_id]
+      properties: {}
 
   - name: track_group_progress
     description: >
       Xem tiến độ làm lab của nhóm. Trả về % hoàn thành tổng thể,
-      danh sách từng thành viên và trạng thái task (completed/in_progress).
-      Sử dụng khi học viên hoặc nhóm trưởng hỏi về tiến độ.
+      progress bar trực quan, danh sách từng thành viên và trạng thái task.
+      group_id được auto-resolve từ Discord context (chỉ dùng được trong group room).
+      Nếu team chưa chốt plan → báo "chưa chốt kế hoạch".
     parameters:
       type: object
-      properties:
-        group_id:
-          type: string
-          description: "Mã nhóm cần kiểm tra tiến độ."
-      required: [group_id]
+      properties: {}
 
   - name: update_group_progress
     description: >
-      Cập nhật tiến độ làm lab của một thành viên trong nhóm.
-      Dùng để đánh dấu task hoàn thành hoặc cập nhật số checklist đã làm.
-      Trả về trạng thái mới nhất sau khi cập nhật.
+      Cập nhật tiến độ của một thành viên trong nhóm dựa trên task_id từ plan.
+      group_id + user_id được auto-resolve từ Discord context.
+      Nếu status=completed, tự động đánh dấu toàn bộ checklist hoàn thành.
+      Trả về overall_team_progress_pct sau mỗi lần cập nhật.
     parameters:
       type: object
       properties:
-        group_id:
-          type: string
-          description: "Mã nhóm."
-        user_id:
-          type: string
-          description: "Mã học viên cần cập nhật."
         task_id:
           type: string
-          description: "Mã task cần cập nhật (ví dụ: 'T1', 'T2')."
+          description: "Mã task cần cập nhật (ví dụ: 'T1', 'T2', 'CT1')."
         status:
           type: string
           enum: [in_progress, completed]
-          description: "Trạng thái mới của task (tùy chọn)."
+          description: "Trạng thái mới của task (tùy chọn). completed → auto full checklist."
         completed_checklist:
           type: integer
           description: "Số checklist đã hoàn thành (tùy chọn)."
-      required: [group_id, user_id, task_id]
+      required: [task_id]
 
   # ---------------- Troubleshooting Tools ----------------
   - name: analyze_student_issue
     description: >
       Tiếp nhận mô tả sự cố/log lỗi của học viên, phân tích nguyên nhân gốc rễ và gợi ý giải pháp.
+      user_id được auto-resolve từ Discord context.
       Nếu log không rõ ràng hoặc không có trong tài liệu, Bot PHẢI yêu cầu dán log hoặc báo chưa rõ,
       KHÔNG ĐƯỢC TỰ BỊA LỖI.
     parameters:
       type: object
       properties:
-        user_id:
-          type: string
-          description: "Mã học viên báo lỗi."
         task_id:
           type: string
           description: "Mã task đang thực hiện."
@@ -176,4 +149,4 @@ tools:
         error_log:
           type: string
           description: "Đoạn log lỗi từ Terminal / IDE (tùy chọn)."
-      required: [user_id, task_id, issue_description]
+      required: [task_id, issue_description]

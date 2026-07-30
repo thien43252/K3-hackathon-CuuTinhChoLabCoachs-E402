@@ -15,6 +15,19 @@ from pydantic import BaseModel, Field
 from app.services.repo_service import LabContentService
 
 from app.core.db import get_db_connection
+from app import discord_context
+
+
+def _resolve_user_id() -> str:
+    """Lấy user_id từ Discord context (auto-resolve, không cần param)."""
+    ctx = discord_context.get()
+    return ctx.user_id or ""
+
+
+def _resolve_group_id() -> str:
+    """Lấy group_id từ Discord context (auto-resolve, không cần param)."""
+    ctx = discord_context.get()
+    return ctx.group_id or ""
 
 
 class MemberRole(BaseModel):
@@ -24,48 +37,23 @@ class MemberRole(BaseModel):
 
 
 class GenerateGroupPlanInput(BaseModel):
-    lab_id: str = Field(..., description="Mã bài lab")
-    group_id: str = Field(..., description="Mã nhóm")
-    members: List[MemberRole] = Field(..., description="Danh sách thành viên kèm vai trò")
+    lab_id: str = Field(..., description="Mã bài lab (có thể để trống để auto-resolve từ context)")
+    members: List[MemberRole] = Field(..., description="Danh sách thành viên kèm vai trò (user_id auto từ context, leader @mention là AI tự điền)")
     notes: Optional[str] = Field(default=None, description="Ghi chú thêm từ nhóm (ví dụ: công nghệ, hướng tiếp cận)")
 
 
-class AssignmentItem(BaseModel):
-    user_id: str = Field(..., description="ID học viên được phân công")
-    task_id: str = Field(..., description="Mã task được phân công")
-    deadline: Optional[str] = Field(default=None, description="Thời hạn hoàn thành (ISO string)")
-
-
-class ParseLabRequirementsInput(BaseModel):
-    lab_id: str = Field(..., description="Mã bài lab cần phân tích")
-    member_count: int = Field(..., description="Số lượng thành viên trong nhóm")
-    duration_hours: Optional[float] = Field(default=2.0, description="Thời lượng làm lab dự kiến (tính theo giờ)")
-
-
-class AssignTaskInput(BaseModel):
-    group_id: str = Field(..., description="Mã định danh nhóm")
-    assignments: List[AssignmentItem] = Field(..., description="Danh sách phân công: [{ user_id, task_id, deadline }]")
-
-
 class GetGroupPlanInput(BaseModel):
-    group_id: str = Field(..., description="Mã nhóm cần lấy plan")
+    pass
 
 
 class TrackGroupProgressInput(BaseModel):
-    group_id: str = Field(..., description="Mã nhóm cần kiểm tra tiến độ")
+    pass
 
 
 class UpdateGroupProgressInput(BaseModel):
-    group_id: str = Field(..., description="Mã nhóm")
-    user_id: str = Field(..., description="Mã học viên")
-    task_id: str = Field(..., description="Mã task cần cập nhật")
+    task_id: str = Field(..., description="Mã task cần cập nhật (ví dụ: 'T1', 'T2')")
     status: Optional[str] = Field(default=None, description="Trạng thái mới ('in_progress' hoặc 'completed')")
     completed_checklist: Optional[int] = Field(default=None, description="Số checklist đã hoàn thành")
-
-
-class GenerateReflectionInput(BaseModel):
-    user_id: str = Field(..., description="Mã học viên")
-    lab_id: str = Field(..., description="Mã bài lab")
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -114,12 +102,14 @@ def _split_into_checklist(description: str, task_name: str) -> list:
     return items
 
 
-def _gen_task_id(phases: list, existing: list) -> str:
+def _gen_custom_task_id(existing: list, phase_ids: set) -> str:
+    """Generate custom task ID (CT1, CT2, ...) avoiding phase task IDs."""
     used = {t.get("task_id", "") for t in existing}
+    used.update(phase_ids)
     i = 1
-    while f"T{i}" in used:
+    while f"CT{i}" in used:
         i += 1
-    return f"T{i}"
+    return f"CT{i}"
 
 
 # ═══════════════════════════════════════════════════════════════
@@ -151,7 +141,6 @@ def generate_reflection(user_id: str, lab_id: str) -> Dict[str, Any]:
 
 def generate_group_plan(
     lab_id: str,
-    group_id: str,
     members: List[Dict[str, Any]],
     notes: Optional[str] = None,
 ) -> Dict[str, Any]:
@@ -159,21 +148,24 @@ def generate_group_plan(
     1. generate_group_plan
     Mô tả: Tạo kế hoạch chi tiết cho nhóm làm lab, đào sâu vào toàn bộ
     nội dung lab từ cache để xây dựng plan có chiều sâu.
+    group_id được auto-resolve từ Discord context (chỉ dùng được trong group room).
 
     Algorithm:
       1. Load toàn bộ dữ liệu lab từ cache (insights + documents + sitemap)
-      2. Extract các HIGH-LEVEL phases từ document structure (chỉ H2) —
-         mỗi phase tương ứng 1 giai đoạn chính của lab
-      3. Với mỗi phase, từ nội dung document extract: mục tiêu, checklist gốc
-      4. Phân công: dùng template-based role assignment — mỗi role type
-         có một bộ trách nhiệm mẫu, áp vào từng phase
-      5. Tự động tạo checklist chi tiết cho từng (role, phase)
+      2. Build phases từ insight tasks (hoặc fallback canonical 4 phase)
+      3. Với mỗi member, score từng phase dựa trên role → chọn top 6
+      4. Search tài liệu lab tìm context match role+phase
+      5. Inject lab-specific file references vào role templates
       6. Ghi vào DB: group_plans + assignments
     """
     try:
-        if not lab_id or not lab_id.strip() or not group_id or not group_id.strip():
+        group_id = _resolve_group_id()
+        if not group_id:
+            return {"status": "empty", "error_code": "NO_CONTEXT",
+                    "message": "Tool chỉ dùng được trong group room Discord. Hãy tạo phòng nhóm trước."}
+        if not lab_id or not lab_id.strip():
             return {"status": "empty", "error_code": "INVALID_INPUT",
-                    "message": "lab_id và group_id không được để trống."}
+                    "message": "lab_id không được để trống."}
         if not members:
             return {"status": "empty", "error_code": "INVALID_MEMBERS",
                     "message": "Danh sách thành viên không được để trống."}
@@ -198,76 +190,71 @@ def generate_group_plan(
         draft_tasks        = insights.get("tasks", [])
 
         # ═══════════════════════════════════════════════════════════
-        # BƯỚC 2: Build canonical 4-phase structure, inject lab content
+        # BƯỚC 2: Build phases — ưu tiên từ insight tasks, fallback canonical
         # ═══════════════════════════════════════════════════════════
-        # Luôn dùng 4 phase canonical vì map tốt với mọi lab.
-        # Content từ lab (insights + documents) được inject vào phase descriptions.
 
-        # 2a. Merge nội dung từ insights và documents
-        lab_full_text = lab_objective + "\n" + setup_instructions + "\n" + grading_rubrics
-        if documents:
-            for doc in documents[:3]:
-                for sec in doc.get("sections", [])[:5]:
-                    lab_full_text += "\n" + sec.get("heading", "") + "\n" + sec.get("content", "")[:300]
+        # 2a. Extract grading & setup lines cho inject vào phases
+        grading_lines = [l.strip().lstrip("-* ") for l in grading_rubrics.split("\n")
+                        if len(l.strip()) > 10][:5] if grading_rubrics else []
+        setup_lines = [l.strip().lstrip("-* ") for l in setup_instructions.split("\n")
+                      if len(l.strip()) > 10][:4] if setup_instructions else []
 
-        # 2b. Extract key deliverables và requirements từ content
-        grading_lines = []
-        if grading_rubrics:
-            grading_lines = [l.strip().lstrip("-* ") for l in grading_rubrics.split("\n")
-                            if len(l.strip()) > 10][:5]
+        # 2b. Phase type detection
+        def _detect_phase_type(title: str, desc: str = "") -> str:
+            t = (title + " " + desc).lower()
+            if any(k in t for k in ("phân tích", "thiết kế", "khám phá", "canvas", "spec", "kiến trúc",
+                                     "định hình", "chọn", "ý tưởng", "brainstorm", "planning",
+                                     "bảng chấm", "scoring matrix", "phân vai", "phân công")):
+                return "design"
+            if any(k in t for k in ("build", "xây dựng", "tích hợp", "implement", "code", "lắp", "cài đặt",
+                                     "setup", "dựng", "agent", "tool", "prompt", "api",
+                                     "chatbot", "react agent", "baseline", "loop")):
+                return "build"
+            if any(k in t for k in ("đo", "validate", "kiểm thử", "test", "eval", "chấm", "audit",
+                                     "quality", "rubric", "đánh giá", "golden", "failed trace",
+                                     "so sánh", "phản hồi")):
+                return "validate"
+            if any(k in t for k in ("demo", "nộp", "trình bày", "slide", "report", "tổng kết", "báo cáo")):
+                return "demo"
+            return "build"  # default
 
-        setup_lines = []
-        if setup_instructions:
-            setup_lines = [l.strip().lstrip("-* ") for l in setup_instructions.split("\n")
-                           if len(l.strip()) > 10][:4]
-
-        # 2c. Canonical phases với content injection (tổng thời gian ~4h)
-        phases = [
-            {
-                "task_id": "T1",
-                "title": "🔍 Phân tích & Thiết kế",
-                "description": (
-                    f"Mục tiêu: {lab_objective[:200] if lab_objective else 'Hiểu rõ bài toán và thiết kế giải pháp'}.\n"
-                    f"Giai đoạn này tập trung vào phân tích yêu cầu, xác định phạm vi, "
-                    f"chọn công nghệ, thiết kế kiến trúc, và lập kế hoạch triển khai."
-                ),
-                "objective": "Phân tích yêu cầu và thiết kế giải pháp hoàn chỉnh",
-                "phase_type": "design",
-                "setup_tasks": setup_lines[:3],
-            },
-            {
-                "task_id": "T2",
-                "title": "🛠 Xây dựng & Tích hợp",
-                "description": (
-                    f"Implement core functionality: xây dựng UI/API, tích hợp AI pipeline, "
-                    f"kết nối các thành phần. Đảm bảo mọi thứ chạy end-to-end."
-                ),
-                "objective": "Hoàn thành sản phẩm chạy được end-to-end",
-                "phase_type": "build",
-            },
-            {
-                "task_id": "T3",
-                "title": "📊 Đo đạc & Validate",
-                "description": (
-                    f"Đánh giá chất lượng sản phẩm: chạy test suite, đo metrics, "
-                    f"validate với người dùng thật, thu thập feedback và sửa lỗi.\n"
-                    f"Tiêu chí: {'; '.join(grading_lines[:3]) if grading_lines else 'Đạt quality bar đã định'}"
-                ),
-                "objective": "Đảm bảo chất lượng đạt tiêu chuẩn",
-                "phase_type": "validate",
-                "setup_tasks": grading_lines[:4],
-            },
-            {
-                "task_id": "T4",
-                "title": "🎤 Demo & Nộp",
-                "description": (
-                    f"Chuẩn bị slide thuyết trình, chạy dry run, demo live trước giảng viên. "
-                    f"Đảm bảo nộp bài đúng hạn và đầy đủ deliverables."
-                ),
-                "objective": "Trình bày thành quả và nộp bài hoàn chỉnh",
-                "phase_type": "demo",
-            },
-        ]
+        # 2c. Build phases: dùng insight tasks nếu có, nếu không → canonical 4
+        phases = []
+        if draft_tasks and len(draft_tasks) >= 2:
+            for idx, t in enumerate(draft_tasks):
+                name = t.get("name", f"Task {idx+1}")
+                desc = t.get("description", "")
+                checklist = t.get("checklist", [])
+                ptype = _detect_phase_type(name, desc)
+                phases.append({
+                    "task_id": f"T{idx+1}",
+                    "title": name,
+                    "description": desc[:400] if desc else "",
+                    "objective": desc[:200] if desc else name,
+                    "phase_type": ptype,
+                    "checklist": checklist,
+                    "deliverable": t.get("deliverable", ""),
+                    "estimated_minutes": t.get("estimated_minutes"),
+                })
+        else:
+            phases = [
+                {"task_id": "T1", "title": "🔍 Phân tích & Thiết kế",
+                 "description": f"Mục tiêu: {lab_objective[:200] if lab_objective else 'Hiểu rõ bài toán và thiết kế giải pháp'}.",
+                 "objective": "Phân tích yêu cầu và thiết kế giải pháp", "phase_type": "design",
+                 "checklist": setup_lines[:3] or ["Phân tích yêu cầu", "Thiết kế kiến trúc", "Lập kế hoạch"]},
+                {"task_id": "T2", "title": "🛠 Xây dựng & Tích hợp",
+                 "description": "Implement core: UI/API, tích hợp AI, kết nối các thành phần.",
+                 "objective": "Hoàn thành sản phẩm end-to-end", "phase_type": "build",
+                 "checklist": ["Implement core logic", "Tích hợp AI", "Xây dựng API/UI"]},
+                {"task_id": "T3", "title": "📊 Đo đạc & Validate",
+                 "description": f"Đánh giá chất lượng: test suite, metrics, validate với người dùng thật.\nTiêu chí: {'; '.join(grading_lines[:3]) if grading_lines else 'Đạt quality bar'}",
+                 "objective": "Đảm bảo chất lượng đạt tiêu chuẩn", "phase_type": "validate",
+                 "checklist": grading_lines[:4] or ["Chạy test suite", "Validate với users", "Sửa lỗi"]},
+                {"task_id": "T4", "title": "🎤 Demo & Nộp",
+                 "description": "Chuẩn bị slide, dry run, demo live, nộp bài.",
+                 "objective": "Trình bày thành quả và nộp bài", "phase_type": "demo",
+                 "checklist": ["Chuẩn bị slide", "Dry run", "Demo", "Nộp bài"]},
+            ]
 
         # ═══════════════════════════════════════════════════════════
         # BƯỚC 3: Role-specific task templates (dùng phase_type có sẵn)
@@ -655,8 +642,96 @@ def generate_group_plan(
             return "fullstack"  # default
 
         # ═══════════════════════════════════════════════════════════
+        # BƯỚC 2.5: Build lab-specific search index từ documents
+        # ═══════════════════════════════════════════════════════════
+        # Gom toàn bộ sections từ tất cả documents để search
+        all_doc_sections = []
+        for doc in documents:
+            for sec in doc.get("sections", []):
+                all_doc_sections.append({
+                    "file": doc.get("relative_path", ""),
+                    "heading": sec.get("heading", ""),
+                    "content": sec.get("content", ""),
+                })
+
+        def _find_lab_specific_context(role_canonical: str, phase_type: str) -> dict:
+            """Tìm sections + files trong lab khớp với role + phase."""
+            ROLE_SEARCH_KW = {
+                "frontend": ["ui", "ux", "giao diện", "frontend", "react", "component", "html", "css", "screen"],
+                "backend":  ["api", "backend", "endpoint", "server", "database", "db", "schema", "model", "fastapi", "flask"],
+                "ai":       ["prompt", "agent", "tool", "model", "llm", "gpt", "openai", "claude", "gemini", "react agent", "guardrail"],
+                "pm":       ["plan", "canvas", "spec", "slide", "demo", "timeline", "checkpoint", "nộp"],
+                "qa":       ["test", "eval", "golden", "kiểm thử", "đánh giá", "rubric", "scoring", "metric"],
+                "fullstack": ["fullstack", "end-to-end", "full-stack"],
+            }
+            PHASE_KW = {
+                "design":   ["thiết kế", "design", "phân tích", "canvas", "spec", "kiến trúc", "architecture"],
+                "build":    ["build", "xây dựng", "implement", "code", "cài đặt", "setup", "tool spec", "prompt"],
+                "validate": ["test", "eval", "validate", "đo", "kiểm thử", "rubric", "đánh giá", "golden"],
+                "demo":     ["demo", "trình bày", "slide", "nộp", "present", "dry run"],
+            }
+
+            role_kw = ROLE_SEARCH_KW.get(role_canonical, [])
+            phase_kw = PHASE_KW.get(phase_type, ["build"])
+
+            matched_sections = []
+            matched_files = set()
+
+            for sec in all_doc_sections:
+                text = (sec["heading"] + " " + sec["content"]).lower()
+                role_match = any(kw in text for kw in role_kw)
+                phase_match = any(kw in text for kw in phase_kw)
+
+                if role_match or phase_match:
+                    score = (1 if role_match else 0) + (1 if phase_match else 0)
+                    matched_sections.append({
+                        "file": sec["file"],
+                        "heading": sec["heading"],
+                        "content": sec["content"][:400],
+                        "score": score,
+                    })
+                    matched_files.add(sec["file"])
+
+            # Sort by score, dedup by heading
+            seen_h = set()
+            unique = []
+            for s in sorted(matched_sections, key=lambda x: x["score"], reverse=True):
+                key = s["heading"].lower()
+                if key not in seen_h:
+                    seen_h.add(key)
+                    unique.append(s)
+
+            return {
+                "sections": unique[:5],
+                "files": sorted(matched_files)[:6],
+            }
+
+        # ═══════════════════════════════════════════════════════════
         # BƯỚC 4: Phân công & tạo task cho từng member
         # ═══════════════════════════════════════════════════════════
+        # Helper: score phase relevance cho role
+        def _score_phase_for_role(phase: dict, canonical_role: str, templates: dict) -> int:
+            """Điểm càng cao = phase càng phù hợp với role."""
+            ptype = phase.get("phase_type", "build")
+            # Bonus nếu phase_type match với role's primary phase
+            ROLE_PRIMARY = {"frontend": "build", "backend": "build", "ai": "build",
+                           "pm": "design", "qa": "validate", "fullstack": "build"}
+            score = 10 if ROLE_PRIMARY.get(canonical_role, "build") == ptype else 5
+            # Bonus nếu có template cho phase type này
+            if templates.get(ptype):
+                score += 5
+            # Bonus dựa trên keyword trong phase title
+            role_kw = {"frontend": ["ui", "giao diện", "frontend"],
+                       "backend": ["api", "backend", "tool", "server"],
+                       "ai": ["ai", "agent", "prompt", "model", "react"],
+                       "pm": ["plan", "phân vai", "checklist", "báo cáo", "nộp"],
+                       "qa": ["test", "eval", "chấm", "validate", "golden"],
+                       "fullstack": []}
+            for kw in role_kw.get(canonical_role, []):
+                if kw in phase.get("title", "").lower():
+                    score += 3
+            return score
+
         plan_members = []
         assignment_rows = []
 
@@ -674,19 +749,28 @@ def generate_group_plan(
 
             member_tasks = []
 
+            phase_ids = {p["task_id"] for p in phases}
             if custom_tasks:
-                # Custom tasks từ leader — vẫn generate checklist
+                # Custom tasks từ leader — dùng prefix CT để tránh trùng phase ID
                 for ct in custom_tasks:
                     member_tasks.append({
-                        "task_id": _gen_task_id(phases, member_tasks),
+                        "task_id": _gen_custom_task_id(member_tasks, phase_ids),
                         "title": ct,
                         "description": "",
                         "checklist": _split_into_checklist("", ct),
                         "deliverable": "",
                     })
             else:
-                # Template-based: mỗi phase sinh 1 task phù hợp với role
+                # Template-based: chọn top phases phù hợp với role (max 6)
+                scored_phases = []
                 for p in phases:
+                    s = _score_phase_for_role(p, canonical, role_templates)
+                    scored_phases.append((s, p))
+                scored_phases.sort(key=lambda x: x[0], reverse=True)
+                max_phases = min(6, len(phases))
+                selected_phases = [p for _, p in scored_phases[:max_phases]]
+
+                for p in selected_phases:
                     ptype = p["phase_type"]  # design / build / validate / demo
                     resp = role_templates.get(ptype, role_templates.get("build", ""))
 
@@ -730,12 +814,38 @@ def generate_group_plan(
                                 deliverable = line.split(":", 1)[-1].strip()[:200]
                                 break
 
+                    # Search lab documents for context relevant to this role+phase
+                    lab_ctx = _find_lab_specific_context(canonical, ptype)
+
+                    # Build lab-specific file references
+                    lab_files = lab_ctx.get("files", [])
+                    file_refs = "\n".join(f"    • `{f}`" for f in lab_files[:4]) if lab_files else ""
+
+                    # Build lab-specific recommendations từ document sections
+                    lab_recs = []
+                    for s in lab_ctx.get("sections", [])[:3]:
+                        rec = s["content"][:250].strip()
+                        if len(rec) > 20:
+                            lab_recs.append(f"    • [{s['file']}] {s['heading']}: {rec}...")
+
+                    lab_context_block = ""
+                    if file_refs or lab_recs:
+                        lab_context_block = (
+                            f"\n\n**📄 Files cụ thể trong bài lab này:**\n{file_refs}"
+                            + ("\n\n**🔍 Nội dung liên quan từ tài liệu lab:**\n" + "\n".join(lab_recs) if lab_recs else "")
+                        )
+
+                    role_tag = f"**[{canonical.upper()}]** "
+                    enriched_description = (role_tag + p.get("description", "")[:300] + lab_context_block)
+
                     member_tasks.append({
                         "task_id": p["task_id"],
-                        "title": f"{p['title']} ({canonical})",
-                        "description": p.get("description", "")[:300],
+                        "title": p['title'],
+                        "description": enriched_description,
                         "checklist": checklist[:7],
                         "deliverable": deliverable,
+                        "lab_files": lab_files[:4],
+                        "lab_recommendations": lab_recs[:3],
                     })
 
             plan_members.append({
@@ -836,6 +946,21 @@ def generate_group_plan(
             f"\n\n> 💡 *Dùng `track_group_progress` để xem tiến độ, `update_group_progress` để cập nhật task.*"
         )
 
+        # Build todo_list: flattened tasks for tracking
+        todo_list = []
+        for pm in plan_members:
+            for t in pm["tasks"]:
+                todo_list.append({
+                    "group_id": group_id,
+                    "user_id": pm["user_id"],
+                    "role": pm["role"],
+                    "task_id": t["task_id"],
+                    "title": t["title"],
+                    "checklist": t.get("checklist", []),
+                    "deliverable": t.get("deliverable", ""),
+                    "status": "in_progress",
+                })
+
         return {
             "status": "success", "group_id": group_id, "lab_id": lab_id,
             "lab_objective": lab_objective or "Mục tiêu bài lab",
@@ -844,6 +969,7 @@ def generate_group_plan(
             "common_pitfalls": common_pitfalls,
             "phases": phases,
             "members_plan": plan_members,
+            "todo_list": todo_list,
             "references": references,
             "summary": plan_summary,
             "note": "Dùng `track_group_progress` để xem tiến độ, `update_group_progress` để cập nhật.",
@@ -853,20 +979,18 @@ def generate_group_plan(
         return {"status": "error", "error_code": "PLAN_FAILED",
                 "message": f"Không thể tạo kế hoạch nhóm: {e}"}
 
-    except Exception as e:
-        return {"status": "error", "error_code": "PLAN_FAILED",
-                "message": f"Không thể tạo kế hoạch nhóm: {e}"}
 
-
-def get_group_plan(group_id: str) -> Dict[str, Any]:
+def get_group_plan() -> Dict[str, Any]:
     """
     2. get_group_plan
     Mô tả: Đọc kế hoạch hiện tại của một nhóm từ DB.
+    group_id được auto-resolve từ Discord context (chỉ dùng được trong group room).
     """
     try:
-        if not group_id or not group_id.strip():
-            return {"status": "empty", "error_code": "INVALID_INPUT",
-                    "message": "group_id không được để trống."}
+        group_id = _resolve_group_id()
+        if not group_id:
+            return {"status": "empty", "error_code": "NO_CONTEXT",
+                    "message": "Tool chỉ dùng được trong group room Discord."}
 
         conn = get_db_connection()
         cursor = conn.cursor()
@@ -899,53 +1023,97 @@ def get_group_plan(group_id: str) -> Dict[str, Any]:
                 "message": f"Không thể đọc kế hoạch nhóm: {e}"}
 
 
-def track_group_progress(group_id: str) -> Dict[str, Any]:
+def track_group_progress() -> Dict[str, Any]:
     """
     3. track_group_progress
-    Mô tả: Tổng hợp tiến độ nhóm từ bảng `assignments`.
+    Mô tả: Xem tiến độ làm lab của nhóm. KIỂM TRA PLAN TRƯỚC — nếu team chưa chốt plan thì báo.
+    group_id được auto-resolve từ Discord context (chỉ dùng được trong group room).
     """
     try:
-        if not group_id or not group_id.strip():
-            return {"status": "empty", "error_code": "INVALID_INPUT",
-                    "message": "group_id không được để trống."}
+        group_id = _resolve_group_id()
+        if not group_id:
+            return {"status": "empty", "error_code": "NO_CONTEXT",
+                    "message": "Tool chỉ dùng được trong group room Discord."}
 
-        if "UNASSIGNED" in group_id:
-            return {"status": "empty", "error_code": "NO_TASK_ASSIGNED",
-                    "message": "Nhóm này chưa được phân công task nào."}
-
+        # ── Bước 1: Kiểm tra team đã chốt plan chưa ──
         conn = get_db_connection()
         cursor = conn.cursor()
+        cursor.execute(
+            "SELECT plan_json FROM group_plans WHERE group_id = ? ORDER BY created_at DESC LIMIT 1",
+            (group_id,))
+        plan_row = cursor.fetchone()
+
+        if not plan_row:
+            conn.close()
+            return {"status": "empty", "error_code": "NO_PLAN",
+                    "message": f"Nhóm {group_id} chưa chốt kế hoạch. Hãy yêu cầu leader gọi `generate_group_plan` để tạo plan trước."}
+
+        # ── Bước 2: Load plan để biết todo_list ──
+        plan_data = json.loads(plan_row["plan_json"])
+        todo_list = plan_data.get("todo_list", [])
+
+        # ── Bước 3: Track từ assignments ──
         cursor.execute("SELECT * FROM assignments WHERE group_id = ?", (group_id,))
         rows = cursor.fetchall()
 
         if not rows:
-            if group_id == "G01" or group_id.startswith("G"):
-                conn.close()
-                return {
-                    "status": "success", "group_id": group_id,
-                    "overall_completion_percent": 0.0,
-                    "members_progress": []
-                }
             conn.close()
-            return {"status": "empty", "error_code": "NO_TASK_ASSIGNED",
-                    "message": "Nhóm này chưa được phân công task nào."}
+            # Có plan nhưng chưa có assignment (chưa generate) → báo
+            overall_pct = 0.0
+            total_tasks = len(todo_list)
+            members_progress = []
+            for item in todo_list:
+                members_progress.append({
+                    "user_id": item["user_id"],
+                    "role": item.get("role", ""),
+                    "task_id": item["task_id"],
+                    "task_title": item["title"],
+                    "checklist_count": len(item.get("checklist", [])),
+                    "status": "in_progress",
+                    "completed_checklist": 0,
+                    "total_checklist": max(len(item.get("checklist", [])), 1),
+                })
+            conn.close()
+            return {
+                "status": "success", "group_id": group_id,
+                "overall_completion_percent": overall_pct,
+                "total_tasks": total_tasks,
+                "completed_tasks": 0,
+                "members_progress": members_progress,
+            }
 
         total_tasks = len(rows)
         completed_tasks = sum(1 for r in rows if r["status"] == "completed")
         overall_pct = round((completed_tasks / total_tasks) * 100.0, 1) if total_tasks > 0 else 0.0
 
-        members_progress = [{
-            "user_id": r["user_id"],
-            "task_title": r["task_title"] or f"Task {r['task_id']}",
-            "status": r["status"],
-            "completed_checklist": r["completed_checklist"],
-            "total_checklist": r["total_checklist"],
-        } for r in rows]
+        # ── Bước 4: Build progress bar ──
+        bar_len = 20
+        filled = int(bar_len * overall_pct / 100)
+        bar = "█" * filled + "░" * (bar_len - filled)
+
+        members_progress = []
+        for r in rows:
+            ck = r["completed_checklist"]
+            tk = r["total_checklist"]
+            pct_task = round((ck / tk) * 100, 1) if tk > 0 else 0
+            members_progress.append({
+                "user_id": r["user_id"],
+                "task_id": r["task_id"],
+                "task_title": r["task_title"] or f"Task {r['task_id']}",
+                "status": r["status"],
+                "completed_checklist": ck,
+                "total_checklist": tk,
+                "task_completion_pct": pct_task,
+            })
+
         conn.close()
 
         return {
             "status": "success", "group_id": group_id,
             "overall_completion_percent": overall_pct,
+            "progress_bar": f"[{bar}] {overall_pct}%",
+            "total_tasks": total_tasks,
+            "completed_tasks": completed_tasks,
             "members_progress": members_progress,
         }
     except Exception as e:
@@ -954,18 +1122,25 @@ def track_group_progress(group_id: str) -> Dict[str, Any]:
 
 
 def update_group_progress(
-    group_id: str, user_id: str, task_id: str,
+    task_id: str,
     status: Optional[str] = None,
     completed_checklist: Optional[int] = None,
 ) -> Dict[str, Any]:
     """
     4. update_group_progress
-    Mô tả: Cập nhật tiến độ của một thành viên trong nhóm.
+    Mô tả: Cập nhật tiến độ của một thành viên trong nhóm dựa trên task_id từ plan.
+    group_id + user_id được auto-resolve từ Discord context.
+    Nếu status=completed, tự động set completed_checklist=total_checklist.
     """
     try:
-        if not group_id or not group_id.strip() or not user_id or not user_id.strip() or not task_id or not task_id.strip():
+        group_id = _resolve_group_id()
+        user_id = _resolve_user_id()
+        if not group_id or not user_id:
+            return {"status": "empty", "error_code": "NO_CONTEXT",
+                    "message": "Tool chỉ dùng được trong Discord group room."}
+        if not task_id or not task_id.strip():
             return {"status": "empty", "error_code": "INVALID_INPUT",
-                    "message": "group_id, user_id và task_id không được để trống."}
+                    "message": "task_id không được để trống."}
 
         if status and status not in ("in_progress", "completed"):
             return {"status": "empty", "error_code": "INVALID_STATUS",
@@ -985,7 +1160,12 @@ def update_group_progress(
         if not row:
             conn.close()
             return {"status": "empty", "error_code": "NO_ASSIGNMENT_FOUND",
-                    "message": f"Không tìm thấy assignment cho user {user_id} - {task_id} trong nhóm {group_id}."}
+                    "message": f"Không tìm thấy assignment cho user {user_id} - {task_id} trong nhóm {group_id}. Cần leader tạo plan trước."}
+
+        # ── Auto-logic: completed → full checklist ──
+        total_checklist = row["total_checklist"]
+        if status == "completed":
+            completed_checklist = total_checklist
 
         updates, params = [], []
         if status:
@@ -1009,6 +1189,14 @@ def update_group_progress(
             "WHERE group_id = ? AND user_id = ? AND task_id = ?",
             (group_id, user_id, task_id))
         updated = cursor.fetchone()
+
+        # ── Tính tiến độ tổng sau update ──
+        cursor.execute("SELECT COUNT(*) as total, SUM(CASE WHEN status='completed' THEN 1 ELSE 0 END) as done "
+                       "FROM assignments WHERE group_id = ?", (group_id,))
+        agg = cursor.fetchone()
+        total_all = agg["total"] or 0
+        done_all = agg["done"] or 0
+        overall_pct = round((done_all / total_all) * 100, 1) if total_all > 0 else 0
         conn.close()
 
         return {
@@ -1016,7 +1204,8 @@ def update_group_progress(
             "task_id": task_id,
             "new_status": updated["status"] if updated else status,
             "completed_checklist": updated["completed_checklist"] if updated else completed_checklist,
-            "total_checklist": updated["total_checklist"] if updated else 2,
+            "total_checklist": updated["total_checklist"] if updated else total_checklist,
+            "overall_team_progress_pct": overall_pct,
             "message": "Đã cập nhật tiến độ thành công.",
         }
     except Exception as e:
