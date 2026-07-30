@@ -3,6 +3,7 @@ import json
 from typing import Dict, Any, Optional
 from app.services.git_service import clone_repo
 from app.services.doc_processor import LabDocProcessor
+from app.services.insight_extractor import LabInsightExtractor
 
 # Đường dẫn file JSON lưu cache kết quả phân tích
 CACHE_FILE = os.path.abspath("cloned_repos/.lab_cache.json")
@@ -26,7 +27,7 @@ class LabContentService:
     Service quản lý trọn gói (Orchestrator) luồng xử lý tài liệu Lab.
 
     Flow khi Admin upload repo lần đầu:
-        Nhận link Git → Clone → Phân tích .md → Lưu cache → Sẵn sàng cho Agent
+        Nhận link Git → Clone → Phân tích .md → Trích xuất Insight → Lưu cache → Sẵn sàng cho Agent
     
     Flow khi Agent/Học viên truy vấn:
         Đọc từ cache → Trả về ngay (không phân tích lại)
@@ -41,9 +42,10 @@ class LabContentService:
 
         Flow:
             Bước 1: Clone repo về máy qua git_service
-            Bước 2: Phân tích toàn bộ file .md qua doc_processor
-            Bước 3: Lưu kết quả phân tích vào cache JSON
-            Bước 4: Trả về cấu trúc dữ liệu hoàn chỉnh
+            Bước 2: Phân tích cấu trúc toàn bộ file .md qua doc_processor
+            Bước 3: Trích xuất tri thức bài Lab (Insights) qua insight_extractor
+            Bước 4: Lưu kết quả phân tích và insights vào cache JSON
+            Bước 5: Trả về cấu trúc dữ liệu hoàn chỉnh
 
         Args:
             repo_url: Link GitHub của bài Lab
@@ -64,22 +66,31 @@ class LabContentService:
             processor = LabDocProcessor(repo_path=repo_path)
             structured_data = processor.process_repository()
         except Exception as e:
-            raise RuntimeError(f"❌ Lỗi phân tích tài liệu: {str(e)}")
+            raise RuntimeError(f"❌ Lỗi phân tích cấu trúc tài liệu: {str(e)}")
 
-        # Bước 3: Đóng gói dữ liệu và lưu cache
+        # Bước 3: Trích xuất tri thức (Insights)
+        try:
+            extractor = LabInsightExtractor()
+            insights = extractor.extract_insights(structured_data["documents"])
+        except Exception as e:
+            print(f"⚠️ Thất bại khi trích xuất insight: {e}. Sử dụng insights rỗng.")
+            insights = {}
+
+        # Bước 4: Đóng gói dữ liệu và lưu cache
         lab_content = {
             "lab_id": lab_id,
             "repo_url": repo_url,
             "local_path": repo_path,
             "total_documents": structured_data["total_documents"],
             "sitemap": structured_data["sitemap"],
-            "documents": structured_data["documents"]
+            "documents": structured_data["documents"],
+            "insights": insights
         }
         cache = _load_cache()
         cache[lab_id] = lab_content
         _save_cache(cache)
 
-        print(f"✅ [ADMIN] Đã đăng ký thành công Lab '{lab_id}'. Tìm thấy {lab_content['total_documents']} tài liệu.")
+        print(f"✅ [ADMIN] Đã đăng ký thành công Lab '{lab_id}'. Tìm thấy {lab_content['total_documents']} tài liệu và đã tạo cơ sở tri thức.")
         return lab_content
 
     def get_lab_data(self, lab_id: str) -> Optional[Dict[str, Any]]:
