@@ -75,6 +75,30 @@ ALL_TOOLS = {
     "fetch_peer_solution": fetch_peer_solution,
 }
 
+# Mapping tên tool với hàm xử lý thực tế
+TOOL_FUNCTIONS = ALL_TOOLS
+
+def load_tool_declarations(tools_file) -> list:
+    """Đọc khai báo tools từ file YAML."""
+    import yaml
+    with open(tools_file, "r", encoding="utf-8") as f:
+        data = yaml.safe_load(f)
+    return data.get("tools", [])
+
+def to_openai_tools(declarations: list) -> list:
+    """Chuyển đổi các khai báo tools sang định dạng OpenAI Function Calling."""
+    return [
+        {
+            "type": "function",
+            "function": {
+                "name": decl["name"],
+                "description": decl["description"].strip(),
+                "parameters": decl["parameters"]
+            }
+        }
+        for decl in declarations
+    ]
+
 __all__ = [
     "upload_lab_material",
     "codebase_indexer",
@@ -92,4 +116,7 @@ __all__ = [
     "analyze_student_issue",
     "fetch_peer_solution",
     "ALL_TOOLS",
+    "TOOL_FUNCTIONS",
+    "load_tool_declarations",
+    "to_openai_tools",
 ]
