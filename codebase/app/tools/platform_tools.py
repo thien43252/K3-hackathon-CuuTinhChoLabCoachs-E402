@@ -5,11 +5,17 @@ Bao gồm:
 5. create_group_room
 6. send_message
 7. send_notification
+
+Khi có Discord context (bot đang chạy), các tool này sẽ gọi Discord API thật.
+Khi không có (CLI mode), fallback về mock data.
 """
 
+import asyncio
+import discord
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
+from app import discord_context
 
 # Mock Store lưu trữ thông tin người dùng và room chat
 _USER_DATABASE: Dict[str, Dict[str, Any]] = {
@@ -86,6 +92,25 @@ class SendNotificationInput(BaseModel):
     urgency: str = Field(default="normal", description="Mức độ ưu tiên ('normal', 'high', 'urgent')")
 
 
+# ── Discord async bridge helper ──
+
+def _run_discord_coro(coro, timeout: float = 10.0):
+    """Run an async Discord operation from a synchronous (thread-pool) context.
+
+    Uses asyncio.run_coroutine_threadsafe to schedule the coroutine on the
+    bot's event loop.  Returns the coroutine result or None on failure.
+    """
+    ctx = discord_context.get()
+    if not ctx or not ctx.event_loop:
+        return None
+    future = asyncio.run_coroutine_threadsafe(coro, ctx.event_loop)
+    try:
+        return future.result(timeout=timeout)
+    except Exception as exc:
+        print(f"⚠️ [DiscordBridge] {type(exc).__name__}: {exc}")
+        return None
+
+
 def get_user_context(
     user_id: str,
     date: Optional[str] = None
@@ -93,7 +118,8 @@ def get_user_context(
     """
     4. get_user_context
     Mô tả: Lấy thông tin chi tiết về người dùng đang gọi bot, lịch làm lab trong ngày và danh sách nhóm.
-    
+    Khi có Discord context, ưu tiên lấy thông tin thật từ Discord guild member.
+
     Trường hợp lỗi cover:
     - 400 Bad Request: user_id rỗng.
     - 404 Not Found: Không tìm thấy học viên hoặc không có bài lab nào trong ngày.
@@ -114,16 +140,79 @@ def get_user_context(
                 "message": "Không thể kết nối đến hệ thống quản lý học viên."
             }
 
+        # ── Thử lấy thông tin thật từ Discord ──
+        ctx = discord_context.get()
+        discord_member = None
+        if ctx and ctx.bot and ctx.guild_id:
+            guild = ctx.bot.get_guild(ctx.guild_id)
+            if guild:
+                try:
+                    # user_id có thể là snowflake (int) hoặc string
+                    uid = int(user_id) if user_id.isdigit() else user_id
+                    discord_member = guild.get_member(uid)
+                except (ValueError, TypeError):
+                    pass
+
+        # ── Merge dữ liệu Discord thật với mock database ──
         user_data = _USER_DATABASE.get(user_id)
+
+        if discord_member:
+            # Dùng tên thật từ Discord
+            full_name = discord_member.display_name
+            role = "student"
+            # Detect admin role from Discord roles
+            if any(r.name.lower() in ("admin", "administrator", "giảng viên", "ta") for r in discord_member.roles):
+                role = "admin"
+            elif any(r.name.lower() in ("group_leader", "trưởng nhóm", "leader") for r in discord_member.roles):
+                role = "group_leader"
+
+            if user_data:
+                # Merge: ưu tiên Discord info, giữ lab info từ mock
+                user_data["full_name"] = full_name
+                user_data["role"] = role
+            else:
+                # User thật từ Discord không có trong mock DB
+                user_data = {
+                    "user_id": user_id,
+                    "full_name": full_name,
+                    "role": role,
+                    "group_id": None,
+                    "today_lab": {
+                        "lab_id": "LAB05_INDIVIDUAL",
+                        "type": "individual",
+                        "title": "Bài lab cá nhân"
+                    }
+                }
+
+            group_info = None
+            if user_data.get("group_id"):
+                gid = user_data["group_id"]
+                members = [uid for uid, u in _USER_DATABASE.items() if u.get("group_id") == gid]
+                group_info = {
+                    "group_id": gid,
+                    "members": members if members else [user_id]
+                }
+
+            return {
+                "status": "success",
+                "user": {
+                    "user_id": user_id,
+                    "full_name": user_data["full_name"],
+                    "role": user_data["role"]
+                },
+                "today_lab": user_data["today_lab"],
+                "group_info": group_info,
+                "_discord_member": True
+            }
+
+        # ── Fallback: mock data (khi không có Discord context) ──
         if not user_data:
-            # Nếu user lạ, kiểm tra xem có cờ NO_LAB hay không
             if "NOLAB" in user_id:
                 return {
                     "status": "empty",
                     "error_code": "NO_LAB_TODAY",
                     "message": "Không tìm thấy lịch bài lab nào cho học viên trong ngày hôm nay."
                 }
-            # Mặc định trả về context mẫu nếu là user bất kỳ
             user_data = {
                 "user_id": user_id,
                 "full_name": f"Học viên {user_id}",
@@ -171,7 +260,8 @@ def create_group_room(
     """
     5. create_group_room
     Mô tả: Tự động tạo channel/room chat nhóm trên nền tảng (Slack/Discord/Teams) và gửi lời mời.
-    
+    Khi có Discord context, tạo channel thật trên Discord guild hiện tại.
+
     Trường hợp lỗi cover:
     - 400 Bad Request: room_name rỗng hoặc danh sách member_ids rỗng.
     - 207 Multi-Status: Tạo room thành công nhưng một số thành viên không tồn tại.
@@ -192,6 +282,76 @@ def create_group_room(
                 "message": "Không có quyền tạo channel trên nền tảng chat."
             }
 
+        # ── Thử tạo channel thật trên Discord ──
+        ctx = discord_context.get()
+        if ctx and ctx.bot and ctx.guild_id:
+            guild = ctx.bot.get_guild(ctx.guild_id)
+            if guild:
+                channel_name = f"group-{room_name.lower().replace(' ', '-')}"
+
+                # Xây permission overwrites
+                overwrites = None
+                if is_private:
+                    overwrites = {
+                        guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+                    }
+                    # Phân quyền cho từng member
+                    added_members = []
+                    failed_members = []
+                    for uid in member_ids:
+                        try:
+                            member_id = int(uid) if uid.isdigit() else uid
+                            member = guild.get_member(member_id)
+                            if member:
+                                overwrites[member] = discord.PermissionOverwrite(
+                                    read_messages=True, send_messages=True,
+                                    embed_links=True, attach_files=True
+                                )
+                                added_members.append(str(member.id))
+                            else:
+                                failed_members.append({"user_id": uid, "reason": "Member not in guild"})
+                        except (ValueError, TypeError):
+                            failed_members.append({"user_id": uid, "reason": "Invalid user ID"})
+                else:
+                    added_members = list(member_ids)
+                    failed_members = []
+
+                try:
+                    channel = _run_discord_coro(
+                        guild.create_text_channel(name=channel_name, overwrites=overwrites)
+                    )
+                    if channel:
+                        room_id = str(channel.id)
+                        _ROOMS_STORE[room_id] = {
+                            "room_id": room_id,
+                            "room_name": room_name,
+                            "members": added_members,
+                            "is_private": is_private
+                        }
+
+                        if failed_members:
+                            return {
+                                "status": "partial_success",
+                                "room_id": room_id,
+                                "discord_channel_id": room_id,
+                                "channel_name": channel_name,
+                                "added_members": added_members,
+                                "failed_members": failed_members
+                            }
+
+                        return {
+                            "status": "success",
+                            "room_id": room_id,
+                            "discord_channel_id": room_id,
+                            "channel_name": channel_name,
+                            "added_members": added_members
+                        }
+                except Exception as exc:
+                    print(f"⚠️ [DiscordBridge] create_group_room failed: {exc}")
+                    # Fallback qua mock bên dưới
+
+        # ── Fallback: mock data (khi không có Discord context) ──
         added_members = []
         failed_members = []
 
@@ -244,7 +404,8 @@ def send_message(
     """
     6. send_message
     Mô tả: Gửi tin nhắn hướng dẫn, phân công task hoặc trao đổi trực tiếp với học viên hoặc kênh nhóm.
-    
+    Khi có Discord context, gửi tin nhắn thật lên Discord channel.
+
     Trường hợp lỗi cover:
     - 400 Bad Request: target_id hoặc nội dung message rỗng.
     - 403 Forbidden / Error: Người dùng chặn bot hoặc room_id không tồn tại.
@@ -264,6 +425,25 @@ def send_message(
                 "message": "Người dùng đã chặn tin nhắn trực tiếp từ Bot hoặc Room ID không tồn tại."
             }
 
+        # ── Thử gửi tin nhắn thật qua Discord ──
+        ctx = discord_context.get()
+        if ctx and ctx.bot:
+            try:
+                channel_id = int(target_id) if target_id.lstrip("-").isdigit() else None
+                if channel_id:
+                    channel = ctx.bot.get_channel(channel_id)
+                    if channel:
+                        sent = _run_discord_coro(channel.send(message))
+                        if sent:
+                            return {
+                                "status": "success",
+                                "message_id": str(sent.id),
+                                "delivered_at": sent.created_at.isoformat()
+                            }
+            except (ValueError, TypeError) as exc:
+                print(f"⚠️ [DiscordBridge] send_message invalid target_id '{target_id}': {exc}")
+
+        # ── Fallback: mock response ──
         msg_id = f"MSG_{abs(hash(message + datetime.now(timezone.utc).isoformat())) % 1000000}"
         delivered_at = datetime.now(timezone.utc).isoformat()
 
@@ -289,7 +469,8 @@ def send_notification(
     """
     7. send_notification
     Mô tả: Tag tên học viên (@username) hoặc phát thông báo khẩn cấp/nhắc nhở quan trọng trong kênh làm việc.
-    
+    Khi có Discord context, gửi notification thật với mentions trên Discord.
+
     Trường hợp lỗi cover:
     - 400 Bad Request: room_id hoặc nội dung content rỗng.
     - 500 Internal Error: Hệ thống push notification bị sập (khi room_id chứa 'TRIGGER_500').
@@ -309,6 +490,38 @@ def send_notification(
                 "message": "Hệ thống thông báo đẩy bị ngắt kết nối."
             }
 
+        # ── Thử gửi notification thật qua Discord ──
+        ctx = discord_context.get()
+        if ctx and ctx.bot:
+            try:
+                channel_id = int(room_id) if room_id.lstrip("-").isdigit() else None
+                if channel_id:
+                    channel = ctx.bot.get_channel(channel_id)
+                    if channel:
+                        # Tạo mentions string
+                        mentions = " ".join(
+                            f"<@{uid}>" if not uid.startswith("<@") else uid
+                            for uid in user_ids_to_tag
+                        )
+                        urgency_prefix = ""
+                        if urgency == "urgent":
+                            urgency_prefix = "🚨 **URGENT** "
+                        elif urgency == "high":
+                            urgency_prefix = "⚠️ **HIGH PRIORITY** "
+
+                        full_content = f"{urgency_prefix}{mentions}\n\n{content}"
+                        sent = _run_discord_coro(channel.send(full_content))
+                        if sent:
+                            return {
+                                "status": "success",
+                                "notified_users_count": len(user_ids_to_tag),
+                                "discord_mentions": [f"<@{uid}>" for uid in user_ids_to_tag],
+                                "message_id": str(sent.id)
+                            }
+            except (ValueError, TypeError) as exc:
+                print(f"⚠️ [DiscordBridge] send_notification invalid room_id '{room_id}': {exc}")
+
+        # ── Fallback: mock response ──
         notified_count = len(user_ids_to_tag)
         formatted_mentions = [f"<@{uid}>" if not uid.startswith("<@") else uid for uid in user_ids_to_tag]
 

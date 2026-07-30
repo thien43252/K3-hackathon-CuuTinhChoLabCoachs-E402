@@ -7,16 +7,16 @@ from datetime import datetime
 from pathlib import Path
 from typing import Any
 
-from env_loader import load_lab_env
-from agent.providers import make_provider
-from agent.providers.base import ToolCall
-from tools import TOOL_FUNCTIONS, load_tool_declarations, to_openai_tools
+from dotenv import load_dotenv
+from app.agent.providers import make_provider
+from app.agent.providers.base import ToolCall
+from app.tools import TOOL_FUNCTIONS, load_tool_declarations, to_openai_tools
 #from versioning import artifact_version_dict, build_artifact_version
 
 
 ROOT = Path(__file__).parent
 ARTIFACTS_DIR = ROOT / "prompt"
-load_lab_env(ROOT.parent)
+load_dotenv(dotenv_path=ROOT.parent / ".env")
 
 
 def now_iso() -> str:
@@ -245,11 +245,11 @@ def main() -> None:
 
         turn_record["ended_at"] = now_iso()
         transcript["turns"].append(turn_record)
-        write_transcript(transcript_path, transcript)
-        print(f"Transcript saved: {transcript_path}")
+        # write_transcript(transcript_path, transcript)
+        # print(f"Transcript saved: {transcript_path}")
 
-    write_transcript(transcript_path, transcript)
-    print(f"Final transcript: {transcript_path}")
+    # write_transcript(transcript_path, transcript)
+    # print(f"Final transcript: {transcript_path}")
 
 
 if __name__ == "__main__":

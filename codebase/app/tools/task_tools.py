@@ -9,6 +9,7 @@ Bao gồm:
 
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
+from app.services.repo_service import LabContentService
 
 # Mock database lưu trữ thông tin assignment và tiến độ công việc
 _ASSIGNMENTS_STORE: Dict[str, List[Dict[str, Any]]] = {}
@@ -69,33 +70,53 @@ def parse_lab_requirements(
                 "message": "Nội dung bài lab quá ngắn hoặc thiếu thông tin để chia task."
             }
 
-        # Mock AI generation tasks chia theo phase
-        tasks = [
-            {
-                "task_id": "T1",
-                "title": "Thiết kế Schema Database & Model Dữ liệu",
-                "phase": "Phase 1 (0-30 phút)",
-                "checklist": ["Tạo bảng User & Group", "Tạo bảng Task & Assignment"]
-            },
-            {
-                "task_id": "T2",
-                "title": "Xây dựng các API Backend chính",
-                "phase": "Phase 2 (30-90 phút)",
-                "checklist": ["Viết API GET /tasks", "Viết API POST /tasks/assign"]
-            },
-            {
-                "task_id": "T3",
-                "title": "Tích hợp Bot Agent & Xử lý Prompt",
-                "phase": "Phase 3 (90-120 phút)",
-                "checklist": ["Tạo Prompt Template cho Bot", "Kết nối Tool vào Agent Loop"]
-            }
-        ]
+        # Tích hợp lấy tri thức Lab thực tế từ LabContentService
+        tasks = []
+        if not lab_id.startswith("MOCK_") and not lab_id.startswith("LAB") and "UNPARSEABLE" not in lab_id:
+            try:
+                service = LabContentService()
+                lab_data = service.get_lab_data(lab_id)
+                if lab_data and "insights" in lab_data and "tasks" in lab_data["insights"]:
+                    insights_tasks = lab_data["insights"]["tasks"]
+                    # Chuyển đổi định dạng phù hợp với output schema của parse_lab_requirements
+                    for idx, t in enumerate(insights_tasks):
+                        tasks.append({
+                            "task_id": f"T{idx+1}",
+                            "title": t.get("name", f"Task {idx+1}"),
+                            "phase": f"Phase {idx+1}",
+                            "checklist": [t.get("description", "Hoàn thành yêu cầu.")]
+                        })
+            except Exception as e:
+                print(f"⚠️ Không thể lấy tri thức thực tế qua LabContentService: {e}")
 
-        # Giới hạn số task tương ứng với số thành viên
-        if member_count == 1:
-            tasks = [tasks[0]]
-        elif member_count == 2:
-            tasks = tasks[:2]
+        # Fallback về mock data nếu là mock lab hoặc không tìm thấy dữ liệu thực tế
+        if not tasks:
+            tasks = [
+                {
+                    "task_id": "T1",
+                    "title": "Thiết kế Schema Database & Model Dữ liệu",
+                    "phase": "Phase 1 (0-30 phút)",
+                    "checklist": ["Tạo bảng User & Group", "Tạo bảng Task & Assignment"]
+                },
+                {
+                    "task_id": "T2",
+                    "title": "Xây dựng các API Backend chính",
+                    "phase": "Phase 2 (30-90 phút)",
+                    "checklist": ["Viết API GET /tasks", "Viết API POST /tasks/assign"]
+                },
+                {
+                    "task_id": "T3",
+                    "title": "Tích hợp Bot Agent & Xử lý Prompt",
+                    "phase": "Phase 3 (90-120 phút)",
+                    "checklist": ["Tạo Prompt Template cho Bot", "Kết nối Tool vào Agent Loop"]
+                }
+            ]
+
+            # Giới hạn số task tương ứng với số thành viên
+            if member_count == 1:
+                tasks = [tasks[0]]
+            elif member_count == 2:
+                tasks = tasks[:2]
 
         return {
             "status": "success",
