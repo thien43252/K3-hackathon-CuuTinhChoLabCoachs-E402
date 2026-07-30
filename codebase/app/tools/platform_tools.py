@@ -201,8 +201,8 @@ def create_group_room(
             else:
                 added_members.append(uid)
 
-        room_id = f"C_{abs(hash(room_name)) % 100000000}"
-        invite_link = f"https://chat.platform.com/rooms/{room_id}"
+        room_id = f"1298{abs(hash(room_name)) % 100000000000000}"
+        discord_channel_name = f"group-{room_name.lower().replace(' ', '-')}"
 
         _ROOMS_STORE[room_id] = {
             "room_id": room_id,
@@ -215,6 +215,8 @@ def create_group_room(
             return {
                 "status": "partial_success",
                 "room_id": room_id,
+                "discord_channel_id": room_id,
+                "channel_name": discord_channel_name,
                 "added_members": added_members,
                 "failed_members": failed_members
             }
@@ -222,9 +224,9 @@ def create_group_room(
         return {
             "status": "success",
             "room_id": room_id,
-            "room_name": room_name,
-            "added_members": added_members,
-            "invite_link": invite_link
+            "discord_channel_id": room_id,
+            "channel_name": discord_channel_name,
+            "added_members": added_members
         }
     except Exception as e:
         return {
@@ -308,10 +310,12 @@ def send_notification(
             }
 
         notified_count = len(user_ids_to_tag)
+        formatted_mentions = [f"<@{uid}>" if not uid.startswith("<@") else uid for uid in user_ids_to_tag]
 
         return {
             "status": "success",
-            "notified_users_count": notified_count
+            "notified_users_count": notified_count,
+            "discord_mentions": formatted_mentions
         }
     except Exception as e:
         return {

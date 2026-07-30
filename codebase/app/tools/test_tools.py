@@ -72,8 +72,11 @@ def run_tests():
     print("\n[5] Testing create_group_room...")
     res = create_group_room(room_name="lab05-group-01", member_ids=["U123456", "U789012"])
     assert res["status"] == "success", f"Failed: {res}"
+    assert "discord_channel_id" in res, f"Missing discord_channel_id: {res}"
+    assert "channel_name" in res, f"Missing channel_name: {res}"
     res_part = create_group_room(room_name="lab05-group-01", member_ids=["U123456", "INVALID_999"])
     assert res_part["status"] == "partial_success", f"Failed partial case: {res_part}"
+    assert "discord_channel_id" in res_part, f"Missing discord_channel_id in partial: {res_part}"
     print("  [OK] PASS: create_group_room")
 
     # 6. send_message
@@ -88,6 +91,8 @@ def run_tests():
     print("\n[7] Testing send_notification...")
     res = send_notification(room_id="C998877", user_ids_to_tag=["U123456"], content="Urgent update")
     assert res["status"] == "success", f"Failed: {res}"
+    assert "discord_mentions" in res, f"Missing discord_mentions: {res}"
+    assert res["discord_mentions"] == ["<@U123456>"], f"Wrong discord_mentions: {res}"
     print("  [OK] PASS: send_notification")
 
     # 8. parse_lab_requirements
@@ -102,6 +107,8 @@ def run_tests():
     print("\n[9] Testing assign_task...")
     res = assign_task(group_id="G01", assignments=[{"user_id": "U123456", "task_id": "T1"}])
     assert res["status"] == "success", f"Failed: {res}"
+    assert "assignments_summary" in res, f"Missing assignments_summary: {res}"
+    assert "board_url" not in res, f"Legacy board_url still present: {res}"
     res_err = assign_task(group_id="G01", assignments=[{"user_id": "U123456", "task_id": "T99"}])
     assert res_err["status"] == "empty", f"Failed error case: {res_err}"
     print("  [OK] PASS: assign_task")
@@ -153,6 +160,9 @@ def run_tests():
     print("\n[15] Testing fetch_peer_solution...")
     res = fetch_peer_solution(group_id="G01", current_task_id="T2", requesting_user_id="U789012")
     assert res["status"] == "success", f"Failed: {res}"
+    assert "code_snippet" in res["helpers"][0], f"Missing code_snippet: {res}"
+    assert "github_commit_url" in res["helpers"][0], f"Missing github_commit_url: {res}"
+    assert "solution_snippet_url" not in res["helpers"][0], f"Legacy solution_snippet_url still present: {res}"
     res_err = fetch_peer_solution(group_id="NO_PEER_G", current_task_id="T2", requesting_user_id="U789012")
     assert res_err["status"] == "empty", f"Failed error case: {res_err}"
     print("  [OK] PASS: fetch_peer_solution")

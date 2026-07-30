@@ -27,7 +27,7 @@ tools:
         lecture_files:
           type: array
           items: {type: string}
-          description: "Danh sách URL hoặc đường dẫn tệp bài giảng (tùy chọn)."
+          description: "Danh sách Discord Attachment URLs hoặc đường dẫn tệp bài giảng (tùy chọn)."
         codebase_repo_url:
           type: string
           description: "Đường dẫn kho chứa codebase mẫu (tùy chọn)."
@@ -86,7 +86,7 @@ tools:
 
   - name: create_group_room
     description: >
-      Tự động tạo channel/room chat nhóm trên nền tảng (Slack/Discord/Teams) và gửi lời mời cho các thành viên.
+      Tự động tạo Text Channel hoặc Private Thread riêng trên Discord và phân quyền cho các thành viên.
       Sử dụng trong luồng làm lab nhóm sau khi Bot xác nhận bài lab nhóm hôm nay.
     parameters:
       type: object
@@ -169,8 +169,8 @@ tools:
 
   - name: assign_task
     description: >
-      Phân công task và checklist cho từng thành viên trong nhóm sau khi Nhóm trưởng đã xác nhận phương án chia công việc.
-      Sử dụng khi Nhóm trưởng chốt phân chia task.
+      Phân công task và checklist cho từng thành viên trong nhóm trên Discord sau khi Nhóm trưởng đã xác nhận phương án chia công việc.
+      Kết quả trả về danh sách checklist Markdown để gửi trực tiếp vào channel nhóm Discord.
     parameters:
       type: object
       properties:
@@ -289,7 +289,7 @@ tools:
 
   - name: fetch_peer_solution
     description: >
-      Tìm kiếm các thành viên trong cùng nhóm đã hoàn thành thành công task tương tự/liên quan để gợi ý học viên đang gặp khó khăn tham khảo kết quả.
+      Tìm kiếm các thành viên trong cùng nhóm đã hoàn thành thành công task tương tự/liên quan để trả về mã nguồn tham khảo (Code Block) trực tiếp trên Discord.
       Sử dụng trong luồng xử lý trễ tiến độ hoặc sau khi phân tích lỗi của học viên.
     parameters:
       type: object

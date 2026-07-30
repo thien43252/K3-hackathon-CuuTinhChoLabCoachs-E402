@@ -167,10 +167,16 @@ def assign_task(
             ]
         }
 
+        assignments_summary = [
+            f"- [ ] Task `{a['task_id']}`: Phân công cho <@{a['user_id']}> (Deadline: {a['deadline']})"
+            for a in parsed_assignments
+        ]
+
         return {
             "status": "success",
             "assigned_count": len(parsed_assignments),
-            "board_url": f"https://lab.platform.com/boards/{group_id}"
+            "assignments_summary": assignments_summary,
+            "message": f"Đã phân công thành công {len(parsed_assignments)} task cho nhóm {group_id} trên Discord."
         }
     except Exception as e:
         return {
@@ -279,7 +285,7 @@ def generate_reflection(
             ],
             "improvements": [
                 "Nên viết comment rõ ràng hơn trong file migration",
-                "Chú ý cập nhật trạng thái task nhanh hơn trên giao diện chung"
+                "Chú ý cập nhật trạng thái task nhanh hơn qua lệnh chat trên Discord"
             ]
         }
 

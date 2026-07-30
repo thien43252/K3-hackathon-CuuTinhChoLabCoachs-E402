@@ -11,7 +11,7 @@ Hệ thống hoạt động theo 4 phân hệ chính như quy định tại Merm
 ### 1.1 Phân hệ 1: Admin Setup (Cấu hình bài lab)
 - **Hành vi**: Khi Admin gửi thông tin cấu hình nội dung bài lab code, bài giảng hoặc codebase mẫu.
 - **Quy trình gọi tool**:
-  1. Gọi `upload_lab_material` với đầy đủ thông tin: `lab_id`, `title`, `type` (`individual` hoặc `group`), `description`, và các đường dẫn `lecture_files`, `codebase_repo_url`.
+  1. Gọi `upload_lab_material` với đầy đủ thông tin: `lab_id`, `title`, `type` (`individual` hoặc `group`), `description`, và các đường dẫn `lecture_files` (Discord Attachment URLs từ file Admin đính kèm trên Discord), `codebase_repo_url`.
   2. Ngay sau khi lưu bài lab thành công, gọi `codebase_indexer` với `lab_id` tương ứng để tự động trích xuất và đánh chỉ mục vào Vector DB.
 
 ### 1.2 Phân hệ 2: Bài Lab Cá Nhân (Personal Flow)
@@ -25,10 +25,10 @@ Hệ thống hoạt động theo 4 phân hệ chính như quy định tại Merm
 - **Hành vi**: Nhóm trưởng nhập lệnh khởi tạo hoặc quản lý bài lab nhóm hôm nay.
 - **Quy trình gọi tool**:
   1. **Khởi tạo & Xác nhận**: Gọi `get_user_context(user_id)` để xác định thông tin bài lab nhóm và danh sách thành viên.
-  2. **Tạo Room Chat**: Gọi `create_group_room(room_name, member_ids)` để tự động khởi tạo channel làm việc nhóm và tạo đường link mời học viên.
+  2. **Tạo Channel Discord**: Gọi `create_group_room(room_name, member_ids)` để tự động tạo Text Channel hoặc Private Thread riêng trên Discord và phân quyền cho các thành viên nhóm.
   3. **Phân tích Yêu cầu**: Gọi `parse_lab_requirements(lab_id, member_count)` để sử dụng AI phân tích bài lab thành danh sách các task nhỏ kèm checklist và mốc thời gian (phase).
-  4. **Xác nhận & Phân công**: Trình bày danh sách task dự kiến cho Nhóm trưởng. Sau khi Nhóm trưởng xác nhận (Confirm), gọi `assign_task(group_id, assignments)` để ghi nhận phân công.
-  5. **Thông báo Task**: Gọi `send_message` hoặc `send_notification(room_id, user_ids_to_tag, content)` để gửi yêu cầu công việc chi tiết + checklist theo phase tới từng thành viên.
+  4. **Xác nhận & Phân công**: Trình bày danh sách task dự kiến cho Nhóm trưởng. Sau khi Nhóm trưởng xác nhận (Confirm), gọi `assign_task(group_id, assignments)` để ghi nhận phân công. Kết quả trả về danh sách checklist Markdown để gửi trực tiếp vào channel nhóm Discord.
+  5. **Thông báo Task**: Gọi `send_message` hoặc `send_notification(room_id, user_ids_to_tag, content)` để gửi yêu cầu công việc chi tiết + checklist theo phase tới từng thành viên trên Discord (tag bằng `<@user_id>`).
   6. **Theo dõi Tiến độ**: Định kỳ hoặc khi nhóm trưởng yêu cầu, gọi `track_group_progress(group_id)` để tổng hợp % hoàn thành và báo cáo tiến độ.
   7. **Tổng kết Reflection**: Khi nhóm hoàn thành toàn bộ bài lab, gọi `generate_reflection(user_id, lab_id)` để tạo bài đánh giá thái độ, đóng góp và bài học kinh nghiệm cá nhân.
 
@@ -41,7 +41,7 @@ Hệ thống hoạt động theo 4 phân hệ chính như quy định tại Merm
   2. **Chẩn đoán Sự cố**:
      - Khi học viên cung cấp mô tả lỗi hoặc log Terminal: Gọi `analyze_student_issue(user_id, task_id, issue_description, error_log)` để phân tích nguyên nhân gốc rễ (root cause) và đưa ra hướng dẫn khắc phục cụ thể.
   3. **Gợi ý Kết quả từ Bạn cùng Nhóm (Peer Solution)**:
-     - Gọi `fetch_peer_solution(group_id, current_task_id, requesting_user_id)` để tìm các thành viên khác trong nhóm đã hoàn thành task tiền đề/tương tự và gợi ý đường link mã nguồn tham khảo.
+     - Gọi `fetch_peer_solution(group_id, current_task_id, requesting_user_id)` để tìm các thành viên khác trong nhóm đã hoàn thành task tiền đề/tương tự và trả về đoạn mã nguồn tham khảo (Code Block) trực tiếp trên Discord.
 
 ---
 
@@ -49,21 +49,21 @@ Hệ thống hoạt động theo 4 phân hệ chính như quy định tại Merm
 
 | STT | Tên Tool | Phạm vi sử dụng chính | Đầu vào quan trọng |
 |---|---|---|---|
-| 1 | `upload_lab_material` | Admin tải nội dung lab, bài giảng, codebase | `lab_id`, `title`, `type`, `description` |
+| 1 | `upload_lab_material` | Admin tải nội dung lab, bài giảng (Discord Attachment), codebase | `lab_id`, `title`, `type`, `description` |
 | 2 | `codebase_indexer` | Index dữ liệu lab vào Vector DB cho RAG | `lab_id`, `force_reindex` |
 | 3 | `RAG_search` | Tra cứu kiến thức, ví dụ code từ tài liệu | `query`, `lab_id`, `top_k` |
-| 4 | `get_user_context` | Lấy ngữ cảnh user, lịch lab, vai trò, nhóm | `user_id`, `date` |
-| 5 | `create_group_room` | Tạo room chat nhóm và gửi link mời | `room_name`, `member_ids` |
-| 6 | `send_message` | Gửi tin nhắn hướng dẫn/trao đổi trực tiếp | `target_id`, `message` |
-| 7 | `send_notification` | Tag tên (@username) và báo tin khẩn cấp | `room_id`, `user_ids_to_tag`, `content` |
+| 4 | `get_user_context` | Lấy ngữ cảnh user (Discord ID), lịch lab, vai trò, nhóm | `user_id`, `date` |
+| 5 | `create_group_room` | Tạo Discord Channel/Thread nhóm và phân quyền | `room_name`, `member_ids` |
+| 6 | `send_message` | Gửi tin nhắn hướng dẫn/trao đổi trên Discord | `target_id`, `message` |
+| 7 | `send_notification` | Tag tên Discord (`<@user_id>`) và báo tin khẩn cấp | `room_id`, `user_ids_to_tag`, `content` |
 | 8 | `parse_lab_requirements` | Phân tích bài lab nhóm thành task & checklist | `lab_id`, `member_count` |
-| 9 | `assign_task` | Lưu vết phân công task cho từng người | `group_id`, `assignments` |
+| 9 | `assign_task` | Phân công task, trả về Markdown Checklist cho Discord | `group_id`, `assignments` |
 | 10 | `track_group_progress` | Báo cáo % tiến độ hoàn thành bài lab nhóm | `group_id` |
 | 11 | `generate_reflection` | Sinh nhận xét/đánh giá cá nhân cuối buổi | `user_id`, `lab_id` |
-| 12 | `schedule_reminder` | Đặt lịch hẹn giờ nhắc nhở (Timer/Cron) | `target_id`, `remind_at`, `message` |
+| 12 | `schedule_reminder` | Đặt lịch hẹn giờ nhắc nhở trên Discord (Timer/Cron) | `target_id`, `remind_at`, `message` |
 | 13 | `extend_deadline` | Giãn mốc deadline hoàn thành task | `task_id`, `user_id`, `extra_minutes` |
 | 14 | `analyze_student_issue` | Phân tích log lỗi Terminal/IDE & gợi ý sửa | `user_id`, `task_id`, `issue_description` |
-| 15 | `fetch_peer_solution` | Tìm bài làm của đồng đội đã xong để tham khảo | `group_id`, `current_task_id`, `requesting_user_id` |
+| 15 | `fetch_peer_solution` | Trả về Code Block tham khảo từ đồng đội trên Discord | `group_id`, `current_task_id`, `requesting_user_id` |
 
 ---
 

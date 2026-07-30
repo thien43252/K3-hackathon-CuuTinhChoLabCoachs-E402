@@ -20,7 +20,7 @@ class UploadLabMaterialInput(BaseModel):
     title: str = Field(..., description="Tiêu đề bài lab")
     type: str = Field(..., description="Loại bài lab ('individual' hoặc 'group')")
     description: str = Field(..., description="Nội dung mô tả yêu cầu bài lab")
-    lecture_files: Optional[List[str]] = Field(default=None, description="Danh sách URL/path tệp bài giảng")
+    lecture_files: Optional[List[str]] = Field(default=None, description="Danh sách Discord Attachment URLs hoặc đường dẫn tệp bài giảng")
     codebase_repo_url: Optional[str] = Field(default=None, description="Đường dẫn kho chứa codebase mẫu")
 
 

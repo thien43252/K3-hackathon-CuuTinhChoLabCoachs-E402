@@ -118,13 +118,25 @@ def fetch_peer_solution(
                 "message": "Hiện chưa có thành viên nào trong nhóm hoàn thành task tiền đề này để tham khảo."
             }
 
-        # Mock helper results
+        # Mock helper results với code_snippet trực tiếp để hiển thị trên Discord
+        code_example = (
+            "```python\n"
+            "# Code mẫu tham khảo từ thành viên U123456 cho task T1\n"
+            "import os\n\n"
+            "def init_database():\n"
+            "    db_url = os.getenv('DATABASE_URL')\n"
+            "    print(f'Connecting to {db_url}...')\n"
+            "    return True\n"
+            "```"
+        )
+
         helpers = [
             {
                 "user_id": "U123456",
                 "full_name": "Pham Duc Thien",
                 "completed_task_id": "T1",
-                "solution_snippet_url": f"https://lab.platform.com/code/snippet_{group_id}_t1.js",
+                "code_snippet": code_example,
+                "github_commit_url": f"https://github.com/example-org/lab-{group_id.lower()}/commit/a1b2c3d4",
                 "note": "Học viên này đã hoàn thành task T1 liên quan đến phần kết nối Database."
             }
         ]
