@@ -1,13 +1,6 @@
-import os
 import discord
 from discord.ext import commands
-from dotenv import load_dotenv
-
-# Tải biến môi trường từ file .env
-load_dotenv()
-
-# Lấy Discord Token từ biến môi trường
-DISCORD_BOT_TOKEN = os.getenv("DISCORD_BOT_TOKEN")
+from app.core.config import settings
 
 # Cấu hình Intents cho Bot (cần bật Message Content Intent trên Discord Developer Portal)
 intents = discord.Intents.default()
@@ -43,9 +36,12 @@ async def on_message(message):
     # Xử lý các command khác nếu có
     await bot.process_commands(message)
 
-if __name__ == "__main__":
-    if not DISCORD_BOT_TOKEN:
-        print("❌ Lỗi: Thiếu DISCORD_BOT_TOKEN trong biến môi trường (.env).")
+def start_bot():
+    if not settings.discord_bot_token:
+        print("❌ Lỗi: Thiếu DISCORD_BOT_TOKEN trong file .env hoặc cấu hình config.py.")
     else:
         print("⚡ Đang khởi động Discord Bot...")
-        bot.run(DISCORD_BOT_TOKEN)
+        bot.run(settings.discord_bot_token)
+
+if __name__ == "__main__":
+    start_bot()
