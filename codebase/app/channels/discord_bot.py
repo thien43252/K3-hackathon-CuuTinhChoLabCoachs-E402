@@ -1,7 +1,12 @@
+import asyncio
 import discord
 from discord.ext import commands
 from discord import app_commands
 from app.core.config import settings
+from app.services.repo_service import LabContentService
+
+# Khởi tạo LabContentService (dùng chung toàn bot)
+lab_service = LabContentService()
 
 # Cấu hình Intents cho Bot (Bật thêm Members Intent để quản lý user dễ dàng)
 intents = discord.Intents.default()
@@ -79,6 +84,85 @@ async def make_plan(interaction: discord.Interaction, lab_number: int):
         f"📝 *Lời khuyên:* Hãy bám sát rubric chấm điểm (04-rubric.md) để tối ưu hóa điểm số của nhóm!"
     )
     await interaction.response.send_message(plan_content)
+
+# ==========================================
+# ADMIN SLASH COMMANDS: Quản lý Lab Repository
+# ==========================================
+
+@bot.tree.command(name="admin-add-lab", description="[ADMIN] Đăng ký một repo GitHub Lab mới vào hệ thống")
+@app_commands.describe(
+    lab_id="Mã định danh bài Lab (ví dụ: lab5, DAY05)",
+    repo_url="Link GitHub của bài Lab (ví dụ: https://github.com/org/repo)",
+    branch="Nhánh git cần clone (để trống = nhánh mặc định)"
+)
+@app_commands.checks.has_permissions(administrator=True)
+async def admin_add_lab(interaction: discord.Interaction, lab_id: str, repo_url: str, branch: str = None):
+    """Chỉ Admin mới được dùng. Phân tích tài liệu 1 lần duy nhất và lưu vào cache."""
+    # Defer để tránh timeout khi clone repo lâu
+    await interaction.response.defer(ephemeral=True)
+
+    try:
+        # Chạy blocking I/O trong thread pool để không block event loop Discord
+        loop = asyncio.get_event_loop()
+        lab_data = await loop.run_in_executor(
+            None,
+            lambda: lab_service.register_lab(repo_url=repo_url, lab_id=lab_id, branch=branch)
+        )
+
+        # Tạo danh sách file tài liệu tìm được
+        sitemap_text = "\n".join(
+            [f"  • `{doc['relative_path']}` — {doc['title']}" for doc in lab_data["sitemap"]]
+        )
+
+        await interaction.followup.send(
+            f"✅ **Đã đăng ký thành công Lab `{lab_id}`!**\n"
+            f"🔗 Repo: {repo_url}\n"
+            f"📚 Tìm thấy **{lab_data['total_documents']}** tài liệu hướng dẫn:\n"
+            f"{sitemap_text}",
+            ephemeral=True
+        )
+    except Exception as e:
+        await interaction.followup.send(
+            f"❌ Lỗi khi đăng ký Lab `{lab_id}`:\n```{str(e)}```",
+            ephemeral=True
+        )
+
+@admin_add_lab.error
+async def admin_add_lab_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message(
+            "🚫 Bạn không có quyền dùng lệnh này. Chỉ Admin mới được phép đăng ký Lab.",
+            ephemeral=True
+        )
+
+@bot.tree.command(name="admin-list-labs", description="[ADMIN] Xem danh sách toàn bộ Lab đã được đăng ký")
+@app_commands.checks.has_permissions(administrator=True)
+async def admin_list_labs(interaction: discord.Interaction):
+    """Liệt kê toàn bộ các Lab đã được đăng ký trong hệ thống."""
+    registered_labs = lab_service.list_registered_labs()
+
+    if not registered_labs:
+        await interaction.response.send_message(
+            "📭 Chưa có Lab nào được đăng ký. Hãy dùng `/admin-add-lab` để thêm mới.",
+            ephemeral=True
+        )
+        return
+
+    lab_list_text = "\n".join(
+        [f"  `{lab['lab_id']}` — {lab['repo_url']} ({lab['total_documents']} tài liệu)" for lab in registered_labs]
+    )
+    await interaction.response.send_message(
+        f"📋 **Danh sách Lab đã đăng ký ({len(registered_labs)}):**\n{lab_list_text}",
+        ephemeral=True
+    )
+
+@admin_list_labs.error
+async def admin_list_labs_error(interaction: discord.Interaction, error: app_commands.AppCommandError):
+    if isinstance(error, app_commands.MissingPermissions):
+        await interaction.response.send_message(
+            "🚫 Bạn không có quyền dùng lệnh này. Chỉ Admin mới được xem danh sách Lab.",
+            ephemeral=True
+        )
 
 # ==========================================
 # CÁC HÀM HELPER XỬ LÝ KÊNH (CHANNELS)
