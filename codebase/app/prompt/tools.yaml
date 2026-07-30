@@ -7,6 +7,7 @@ tools:
   - name: upload_lab_material
     description: >
       Admin tải lên nội dung bài lab code, bài giảng và mã nguồn codebase mẫu lên hệ thống.
+      Lưu trữ metadata vào CSDL SQLite và lưu file bài giảng lên ổ đĩa.
       Sử dụng khi Admin thiết lập tài liệu hoặc nội dung cho bài lab mới.
     parameters:
       type: object
@@ -35,7 +36,7 @@ tools:
 
   - name: codebase_indexer
     description: >
-      Tự động trích xuất, phân tích và đánh chỉ mục (index) tệp bài giảng và codebase vào hệ thống RAG / Vector Database.
+      Tự động trích xuất, phân tích và đánh chỉ mục (index) tệp bài giảng và codebase vào CSDL SQLite `lab_knowledge`.
       Sử dụng sau khi Admin tải lên tài liệu bài lab hoặc khi cần re-index dữ liệu.
     parameters:
       type: object
@@ -51,8 +52,8 @@ tools:
 
   - name: RAG_search
     description: >
-      Truy vấn cơ sở tri thức RAG để lấy các đoạn mã nguồn mẫu, hướng dẫn làm bài hoặc đáp án bài giảng liên quan đến câu hỏi.
-      Sử dụng khi học viên hỏi về cách làm lab, tài liệu bài giảng hoặc ví dụ code.
+      Truy vấn cơ sở tri thức CSDL SQLite `lab_knowledge` để lấy các đoạn mã nguồn mẫu, hướng dẫn làm bài hoặc bài giảng.
+      Nếu không tìm thấy dữ liệu (status: 'empty'), Bot PHẢI trả lời là không tìm thấy/không biết, TUYỆT ĐỐI KHÔNG BỊA ĐẶT.
     parameters:
       type: object
       properties:
@@ -71,7 +72,7 @@ tools:
   # ---------------- Platform & Context Tools ----------------
   - name: get_user_context
     description: >
-      Lấy thông tin chi tiết về người dùng đang tương tác với Bot, lịch làm lab trong ngày, vai trò và thông tin nhóm.
+      Lấy thông tin chi tiết về người dùng, lịch làm lab trong ngày, vai trò và thông tin nhóm từ CSDL SQLite `users`.
       Sử dụng đầu tiên khi nhận diện câu hỏi từ học viên để xác định vai trò (học viên/nhóm trưởng), loại lab (cá nhân/nhóm) và group_id.
     parameters:
       type: object
@@ -86,7 +87,7 @@ tools:
 
   - name: create_group_room
     description: >
-      Tự động tạo Text Channel hoặc Private Thread riêng trên Discord và phân quyền cho các thành viên.
+      Tự động tạo Text Channel hoặc Private Thread riêng trên Discord và ghi nhận thông tin vào CSDL SQLite `rooms`.
       Sử dụng trong luồng làm lab nhóm sau khi Bot xác nhận bài lab nhóm hôm nay.
     parameters:
       type: object
@@ -106,7 +107,7 @@ tools:
 
   - name: send_message
     description: >
-      Gửi tin nhắn hướng dẫn, trao đổi trực tiếp hoặc kết quả xử lý tới học viên hoặc kênh nhóm.
+      Gửi tin nhắn hướng dẫn, trao đổi trực tiếp tới học viên hoặc kênh nhóm và lưu vết vào CSDL `messages`.
       Sử dụng khi gửi hướng dẫn làm lab cá nhân, gửi yêu cầu task hoặc trao đổi chung.
     parameters:
       type: object
@@ -125,7 +126,7 @@ tools:
 
   - name: send_notification
     description: >
-      Tag tên học viên (@username) hoặc phát thông báo khẩn cấp/nhắc nhở quan trọng trong kênh làm việc.
+      Tag tên học viên (@username) hoặc phát thông báo khẩn cấp/nhắc nhở quan trọng trong kênh làm việc và lưu vết CSDL.
       Sử dụng khi phát thông báo chia task, nhắc deadline hoặc báo trễ tiến độ.
     parameters:
       type: object
@@ -150,7 +151,7 @@ tools:
   # ---------------- Task Management Tools ----------------
   - name: parse_lab_requirements
     description: >
-      Phân tích yêu cầu bài lab nhóm thành các task nhỏ, ước lượng mốc thời gian/phase và tạo checklist công việc.
+      Phân tích yêu cầu bài lab nhóm từ CSDL thành các task nhỏ, ước lượng mốc thời gian/phase và tạo checklist công việc.
       Sử dụng trong luồng lab nhóm khi nhóm trưởng khởi tạo hoặc hỏi về các yêu cầu task cần chia.
     parameters:
       type: object
@@ -169,7 +170,7 @@ tools:
 
   - name: assign_task
     description: >
-      Phân công task và checklist cho từng thành viên trong nhóm trên Discord sau khi Nhóm trưởng đã xác nhận phương án chia công việc.
+      Phân công task và checklist cho từng thành viên trong nhóm trên Discord và lưu vết vào CSDL SQLite `assignments`.
       Kết quả trả về danh sách checklist Markdown để gửi trực tiếp vào channel nhóm Discord.
     parameters:
       type: object
@@ -197,8 +198,8 @@ tools:
 
   - name: track_group_progress
     description: >
-      Tổng hợp phần trăm hoàn thành, danh sách task đã xong / chưa xong của tất cả thành viên trong nhóm.
-      Sử dụng khi Nhóm trưởng hoặc Bot cần kiểm tra tiến độ chung của nhóm.
+      Tổng hợp phần trăm hoàn thành, danh sách task đã xong / chưa xong dựa trên CSDL SQLite `assignments`.
+      Sử dụng khi Nhóm trưởng hoặc Bot cần kiểm tra tiến độ thực tế của nhóm.
     parameters:
       type: object
       properties:
@@ -209,7 +210,7 @@ tools:
 
   - name: generate_reflection
     description: >
-      Tổng hợp lịch sử làm bài, mức độ hoàn thành task và thái độ để sinh bài đánh giá / reflection cá nhân cho từng học viên.
+      Tổng hợp kết quả làm bài thực tế từ CSDL SQLite `assignments` để sinh bài đánh giá / reflection cá nhân cho từng học viên.
       Sử dụng khi nhóm đã hoàn thành bài lab để đưa ra nhận xét cá nhân.
     parameters:
       type: object
@@ -225,7 +226,7 @@ tools:
   # ---------------- Scheduler & Remind Tools ----------------
   - name: schedule_reminder
     description: >
-      Thiết lập lịch thông báo tự động (Timer / Cron) để nhắc học viên cập nhật tiến độ hoặc sắp đến deadline.
+      Thiết lập lịch thông báo tự động (Timer / Cron) và lưu vào CSDL SQLite `reminders` để nhắc học viên cập nhật tiến độ.
       Sử dụng trong luồng theo dõi tiến độ hoặc xử lý trễ tiến độ.
     parameters:
       type: object
@@ -246,7 +247,7 @@ tools:
 
   - name: extend_deadline
     description: >
-      Gia hạn mốc thời gian hoàn thành task cho học viên gặp khó khăn kỹ thuật hoặc trễ tiến độ (Tối đa 2 lần gia hạn).
+      Gia hạn mốc thời gian hoàn thành task trong CSDL SQLite `assignments` (Tối đa 2 lần gia hạn cho một task).
       Sử dụng trong luồng xử lý trễ tiến độ khi học viên đề nghị giãn deadline.
     parameters:
       type: object
@@ -265,11 +266,10 @@ tools:
           description: "Lý do xin gia hạn (tùy chọn)."
       required: [task_id, user_id, extra_minutes]
 
-  # ---------------- Troubleshooting Tools ----------------
   - name: analyze_student_issue
     description: >
-      Tiếp nhận mô tả sự cố/log lỗi của học viên, phân tích nguyên nhân gốc rễ và đưa ra giải pháp khắc phục.
-      Sử dụng khi học viên báo gặp lỗi code, lỗi môi trường hoặc không làm được task.
+      Tiếp nhận mô tả sự cố/log lỗi của học viên, phân tích nguyên nhân gốc rễ dựa trên CSDL tri thức và gợi ý giải pháp.
+      Nếu log không rõ ràng hoặc không có trong tài liệu, Bot PHẢI yêu cầu dán log hoặc báo chưa rõ, KHÔNG ĐƯỢC TỰ BỊA LỖI.
     parameters:
       type: object
       properties:
@@ -289,7 +289,7 @@ tools:
 
   - name: fetch_peer_solution
     description: >
-      Tìm kiếm các thành viên trong cùng nhóm đã hoàn thành thành công task tương tự/liên quan để trả về mã nguồn tham khảo (Code Block) trực tiếp trên Discord.
+      Tìm kiếm các thành viên trong nhóm đã hoàn thành task từ CSDL SQLite `assignments` để trả về mã nguồn tham khảo (Code Block) trên Discord.
       Sử dụng trong luồng xử lý trễ tiến độ hoặc sau khi phân tích lỗi của học viên.
     parameters:
       type: object

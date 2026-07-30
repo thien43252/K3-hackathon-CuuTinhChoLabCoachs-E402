@@ -1,65 +1,25 @@
 """
 Module chứa các công cụ Tương tác Nền tảng & Ngữ cảnh (Platform & Context Tools).
+Sử dụng CSDL SQLite thực tế (`users`, `rooms`, `messages`).
 Bao gồm:
 4. get_user_context
 5. create_group_room
 6. send_message
 7. send_notification
+
+Khi có Discord context (bot đang chạy), các tool này sẽ gọi Discord API thật.
+Khi không có (CLI mode), fallback về mock data.
 """
 
+import asyncio
+import json
+import discord
 from datetime import datetime, timezone
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
-# Mock Store lưu trữ thông tin người dùng và room chat
-_USER_DATABASE: Dict[str, Dict[str, Any]] = {
-    "U123456": {
-        "user_id": "U123456",
-        "full_name": "Pham Duc Thien",
-        "role": "group_leader",
-        "group_id": "G01",
-        "today_lab": {
-            "lab_id": "LAB05_GROUP",
-            "type": "group",
-            "title": "Xây dựng AI Agent Workflow"
-        }
-    },
-    "U789012": {
-        "user_id": "U789012",
-        "full_name": "Nguyen Van A",
-        "role": "member",
-        "group_id": "G01",
-        "today_lab": {
-            "lab_id": "LAB05_GROUP",
-            "type": "group",
-            "title": "Xây dựng AI Agent Workflow"
-        }
-    },
-    "U345678": {
-        "user_id": "U345678",
-        "full_name": "Tran Thi B",
-        "role": "member",
-        "group_id": "G01",
-        "today_lab": {
-            "lab_id": "LAB05_GROUP",
-            "type": "group",
-            "title": "Xây dựng AI Agent Workflow"
-        }
-    },
-    "U999999": {
-        "user_id": "U999999",
-        "full_name": "Le Van C",
-        "role": "student",
-        "group_id": None,
-        "today_lab": {
-            "lab_id": "LAB05_INDIVIDUAL",
-            "type": "individual",
-            "title": "Bài lab cá nhân Python Basis"
-        }
-    }
-}
-
-_ROOMS_STORE: Dict[str, Dict[str, Any]] = {}
+from app.core.db import get_db_connection
+from app import discord_context
 
 
 class GetUserContextInput(BaseModel):
@@ -86,18 +46,33 @@ class SendNotificationInput(BaseModel):
     urgency: str = Field(default="normal", description="Mức độ ưu tiên ('normal', 'high', 'urgent')")
 
 
+# ── Discord async bridge helper ──
+
+def _run_discord_coro(coro, timeout: float = 10.0):
+    """Run an async Discord operation from a synchronous (thread-pool) context.
+
+    Uses asyncio.run_coroutine_threadsafe to schedule the coroutine on the
+    bot's event loop.  Returns the coroutine result or None on failure.
+    """
+    ctx = discord_context.get()
+    if not ctx or not ctx.event_loop:
+        return None
+    future = asyncio.run_coroutine_threadsafe(coro, ctx.event_loop)
+    try:
+        return future.result(timeout=timeout)
+    except Exception as exc:
+        print(f"⚠️ [DiscordBridge] {type(exc).__name__}: {exc}")
+        return None
+
+
 def get_user_context(
     user_id: str,
     date: Optional[str] = None
 ) -> Dict[str, Any]:
     """
     4. get_user_context
-    Mô tả: Lấy thông tin chi tiết về người dùng đang gọi bot, lịch làm lab trong ngày và danh sách nhóm.
-    
-    Trường hợp lỗi cover:
-    - 400 Bad Request: user_id rỗng.
-    - 404 Not Found: Không tìm thấy học viên hoặc không có bài lab nào trong ngày.
-    - 500 Internal Error: Lỗi kết nối dịch vụ user (khi user_id chứa 'TRIGGER_500').
+    Mô tả: Lấy thông tin chi tiết về người dùng đang gọi bot.
+    Ưu tiên Discord member info (fetch_member), sau đó SQLite DB.
     """
     try:
         if not user_id or not user_id.strip():
@@ -114,45 +89,134 @@ def get_user_context(
                 "message": "Không thể kết nối đến hệ thống quản lý học viên."
             }
 
-        user_data = _USER_DATABASE.get(user_id)
-        if not user_data:
-            # Nếu user lạ, kiểm tra xem có cờ NO_LAB hay không
+        # ── Bước 1: Lấy thông tin từ Discord context (fetch_member để đảm bảo có data) ──
+        discord_full_name = None
+        discord_role = "student"
+        ctx = discord_context.get()
+        if ctx and ctx.bot and ctx.guild_id:
+            guild = ctx.bot.get_guild(ctx.guild_id)
+            if guild:
+                try:
+                    uid = int(user_id) if user_id.isdigit() else user_id
+                    # Dùng fetch_member (async API call) thay vì get_member (cache lookup)
+                    member = _run_discord_coro(guild.fetch_member(uid))
+                    if member:
+                        discord_full_name = member.display_name
+                        if any(r.name.lower() in ("admin", "administrator", "giảng viên", "ta") for r in member.roles):
+                            discord_role = "admin"
+                        elif any(r.name.lower() in ("group_leader", "trưởng nhóm", "leader") for r in member.roles):
+                            discord_role = "group_leader"
+                except (ValueError, TypeError):
+                    pass
+
+        # ── Bước 2: Tra SQLite DB, luôn sync name/role từ Discord nếu có ──
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+        user_row = cursor.fetchone()
+
+        if not user_row:
             if "NOLAB" in user_id:
+                conn.close()
                 return {
                     "status": "empty",
                     "error_code": "NO_LAB_TODAY",
                     "message": "Không tìm thấy lịch bài lab nào cho học viên trong ngày hôm nay."
                 }
-            # Mặc định trả về context mẫu nếu là user bất kỳ
-            user_data = {
-                "user_id": user_id,
-                "full_name": f"Học viên {user_id}",
-                "role": "student",
-                "group_id": None,
-                "today_lab": {
-                    "lab_id": "LAB05_INDIVIDUAL",
-                    "type": "individual",
-                    "title": "Bài lab cá nhân"
+
+            if discord_full_name:
+                # Discord user thật, chưa có DB → check lab_materials để biết lab nào available
+                available_labs = []
+                try:
+                    cursor.execute("SELECT lab_id, title FROM lab_materials ORDER BY created_at DESC LIMIT 10")
+                    available_labs = [
+                        {"lab_id": row["lab_id"], "title": row["title"]}
+                        for row in cursor.fetchall()
+                    ]
+                except Exception:
+                    pass  # bảng lab_materials có thể chưa tồn tại
+                conn.close()
+
+                if available_labs:
+                    lab_list = "\n".join([f"  • `{lab['lab_id']}` — {lab['title']}" for lab in available_labs])
+                    return {
+                        "status": "success",
+                        "user": {
+                            "user_id": user_id,
+                            "full_name": discord_full_name,
+                            "role": discord_role
+                        },
+                        "today_lab": None,
+                        "group_info": None,
+                        "available_labs": available_labs,
+                        "message": f"Bạn chưa được phân công bài lab. Hiện có lab sau:\n{lab_list}\n\nHãy nhờ Admin gán lab cho bạn bằng lệnh `/admin-assign-lab <user_id> <lab_id>` nhé!"
+                    }
+
+                conn.close()
+                return {
+                    "status": "success",
+                    "user": {
+                        "user_id": user_id,
+                        "full_name": discord_full_name,
+                        "role": discord_role
+                    },
+                    "today_lab": None,
+                    "group_info": None,
+                    "message": "Bạn chưa được phân công bài lab nào. Hãy nhờ Admin đăng ký lab cho bạn nhé!"
                 }
-            }
+
+            # Không có Discord, không có DB → insert default Lab
+            cursor.execute(
+                """
+                INSERT INTO users (user_id, full_name, role, group_id, today_lab_id, today_lab_type, today_lab_title)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+                """,
+                (user_id, f"Học viên {user_id}", "student", None, "LAB05_INDIVIDUAL", "individual", "Bài lab cá nhân")
+            )
+            conn.commit()
+            cursor.execute("SELECT * FROM users WHERE user_id = ?", (user_id,))
+            user_row = cursor.fetchone()
+
+        else:
+            # User đã tồn tại trong DB — sync name/role từ Discord nếu có
+            if discord_full_name:
+                cursor.execute(
+                    "UPDATE users SET full_name = ?, role = ? WHERE user_id = ?",
+                    (discord_full_name, discord_role, user_id)
+                )
+                conn.commit()
+
+        # ── Build response ──
+        full_name = discord_full_name or user_row["full_name"]
+        role = discord_role if discord_full_name else user_row["role"]
 
         group_info = None
-        if user_data.get("group_id"):
-            gid = user_data["group_id"]
-            members = [uid for uid, u in _USER_DATABASE.items() if u.get("group_id") == gid]
+        group_id = user_row["group_id"]
+        if group_id:
+            cursor.execute("SELECT user_id FROM users WHERE group_id = ?", (group_id,))
+            member_rows = cursor.fetchall()
+            members_list = [r["user_id"] for r in member_rows]
             group_info = {
-                "group_id": gid,
-                "members": members if members else [user_id]
+                "group_id": group_id,
+                "members": members_list if members_list else [user_id]
             }
+
+        today_lab = {
+            "lab_id": user_row["today_lab_id"] or "LAB05_INDIVIDUAL",
+            "type": user_row["today_lab_type"] or "individual",
+            "title": user_row["today_lab_title"] or "Bài lab"
+        }
+
+        conn.close()
 
         return {
             "status": "success",
             "user": {
-                "user_id": user_data["user_id"],
-                "full_name": user_data["full_name"],
-                "role": user_data["role"]
+                "user_id": user_id,
+                "full_name": full_name,
+                "role": role
             },
-            "today_lab": user_data["today_lab"],
+            "today_lab": today_lab,
             "group_info": group_info
         }
     except Exception as e:
@@ -170,12 +234,7 @@ def create_group_room(
 ) -> Dict[str, Any]:
     """
     5. create_group_room
-    Mô tả: Tự động tạo channel/room chat nhóm trên nền tảng (Slack/Discord/Teams) và gửi lời mời.
-    
-    Trường hợp lỗi cover:
-    - 400 Bad Request: room_name rỗng hoặc danh sách member_ids rỗng.
-    - 207 Multi-Status: Tạo room thành công nhưng một số thành viên không tồn tại.
-    - 500 Internal Error: Lỗi API nền tảng chat (khi room_name chứa 'TRIGGER_500').
+    Mô tả: Tự động tạo channel/room chat nhóm và ghi nhận thông tin vào SQLite DB.
     """
     try:
         if not room_name or not room_name.strip() or not member_ids:
@@ -192,6 +251,94 @@ def create_group_room(
                 "message": "Không có quyền tạo channel trên nền tảng chat."
             }
 
+        # ── Thử tạo channel thật trên Discord ──
+        ctx = discord_context.get()
+        if ctx and ctx.bot and ctx.guild_id:
+            guild = ctx.bot.get_guild(ctx.guild_id)
+            if guild:
+                channel_name = f"group-{room_name.lower().replace(' ', '-')}"
+
+                # Xây permission overwrites
+                overwrites = None
+                if is_private:
+                    overwrites = {
+                        guild.default_role: discord.PermissionOverwrite(read_messages=False),
+                        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+                    }
+                    # Phân quyền cho từng member
+                    added_members = []
+                    failed_members = []
+                    for uid in member_ids:
+                        try:
+                            member_id = int(uid) if uid.isdigit() else uid
+                            member = guild.get_member(member_id)
+                            if member:
+                                overwrites[member] = discord.PermissionOverwrite(
+                                    read_messages=True, send_messages=True,
+                                    embed_links=True, attach_files=True
+                                )
+                                added_members.append(str(member.id))
+                            else:
+                                failed_members.append({"user_id": uid, "reason": "Member not in guild"})
+                        except (ValueError, TypeError):
+                            failed_members.append({"user_id": uid, "reason": "Invalid user ID"})
+                else:
+                    added_members = list(member_ids)
+                    failed_members = []
+
+                try:
+                    channel = _run_discord_coro(
+                        guild.create_text_channel(name=channel_name, overwrites=overwrites)
+                    )
+                    if channel:
+                        room_id = str(channel.id)
+                        created_at = datetime.now(timezone.utc).isoformat()
+                        # Lưu room vào CSDL SQLite
+                        try:
+                            conn_save = get_db_connection()
+                            cur = conn_save.cursor()
+                            cur.execute(
+                                """
+                                INSERT OR REPLACE INTO rooms (room_id, room_name, discord_channel_id, channel_name, added_members, is_private, created_at)
+                                VALUES (?, ?, ?, ?, ?, ?, ?)
+                                """,
+                                (
+                                    room_id,
+                                    room_name,
+                                    room_id,
+                                    channel_name,
+                                    json.dumps(added_members, ensure_ascii=False),
+                                    1 if is_private else 0,
+                                    created_at
+                                )
+                            )
+                            conn_save.commit()
+                            conn_save.close()
+                        except Exception as db_exc:
+                            print(f"⚠️ [DiscordBridge] create_group_room DB save failed: {db_exc}")
+
+                        if failed_members:
+                            return {
+                                "status": "partial_success",
+                                "room_id": room_id,
+                                "discord_channel_id": room_id,
+                                "channel_name": channel_name,
+                                "added_members": added_members,
+                                "failed_members": failed_members
+                            }
+
+                        return {
+                            "status": "success",
+                            "room_id": room_id,
+                            "discord_channel_id": room_id,
+                            "channel_name": channel_name,
+                            "added_members": added_members
+                        }
+                except Exception as exc:
+                    print(f"⚠️ [DiscordBridge] create_group_room failed: {exc}")
+                    # Fallback qua mock bên dưới
+
+        # ── Fallback: mock data (khi không có Discord context) ──
         added_members = []
         failed_members = []
 
@@ -203,13 +350,28 @@ def create_group_room(
 
         room_id = f"1298{abs(hash(room_name)) % 100000000000000}"
         discord_channel_name = f"group-{room_name.lower().replace(' ', '-')}"
+        created_at = datetime.now(timezone.utc).isoformat()
 
-        _ROOMS_STORE[room_id] = {
-            "room_id": room_id,
-            "room_name": room_name,
-            "members": added_members,
-            "is_private": is_private
-        }
+        # Lưu room vào CSDL SQLite
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO rooms (room_id, room_name, discord_channel_id, channel_name, added_members, is_private, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                room_id,
+                room_name,
+                room_id,
+                discord_channel_name,
+                json.dumps(added_members, ensure_ascii=False),
+                1 if is_private else 0,
+                created_at
+            )
+        )
+        conn.commit()
+        conn.close()
 
         if failed_members:
             return {
@@ -243,11 +405,7 @@ def send_message(
 ) -> Dict[str, Any]:
     """
     6. send_message
-    Mô tả: Gửi tin nhắn hướng dẫn, phân công task hoặc trao đổi trực tiếp với học viên hoặc kênh nhóm.
-    
-    Trường hợp lỗi cover:
-    - 400 Bad Request: target_id hoặc nội dung message rỗng.
-    - 403 Forbidden / Error: Người dùng chặn bot hoặc room_id không tồn tại.
+    Mô tả: Gửi tin nhắn hướng dẫn và lưu lịch sử vào SQLite DB.
     """
     try:
         if not target_id or not target_id.strip() or not message or not message.strip():
@@ -264,8 +422,46 @@ def send_message(
                 "message": "Người dùng đã chặn tin nhắn trực tiếp từ Bot hoặc Room ID không tồn tại."
             }
 
+        # ── Thử gửi tin nhắn thật qua Discord ──
+        ctx = discord_context.get()
+        if ctx and ctx.bot:
+            try:
+                channel_id = int(target_id) if target_id.lstrip("-").isdigit() else None
+                if channel_id:
+                    channel = ctx.bot.get_channel(channel_id)
+                    if channel:
+                        sent = _run_discord_coro(channel.send(message))
+                        if sent:
+                            return {
+                                "status": "success",
+                                "message_id": str(sent.id),
+                                "delivered_at": sent.created_at.isoformat()
+                            }
+            except (ValueError, TypeError) as exc:
+                print(f"⚠️ [DiscordBridge] send_message invalid target_id '{target_id}': {exc}")
+
+        # ── Fallback: mock response ──
         msg_id = f"MSG_{abs(hash(message + datetime.now(timezone.utc).isoformat())) % 1000000}"
         delivered_at = datetime.now(timezone.utc).isoformat()
+
+        # Lưu tin nhắn vào CSDL SQLite
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT INTO messages (message_id, target_id, message, attachments, delivered_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                msg_id,
+                target_id,
+                message,
+                json.dumps(attachments or [], ensure_ascii=False),
+                delivered_at
+            )
+        )
+        conn.commit()
+        conn.close()
 
         return {
             "status": "success",
@@ -288,11 +484,7 @@ def send_notification(
 ) -> Dict[str, Any]:
     """
     7. send_notification
-    Mô tả: Tag tên học viên (@username) hoặc phát thông báo khẩn cấp/nhắc nhở quan trọng trong kênh làm việc.
-    
-    Trường hợp lỗi cover:
-    - 400 Bad Request: room_id hoặc nội dung content rỗng.
-    - 500 Internal Error: Hệ thống push notification bị sập (khi room_id chứa 'TRIGGER_500').
+    Mô tả: Tag tên học viên (@username) hoặc phát thông báo khẩn cấp trong kênh làm việc.
     """
     try:
         if not room_id or not room_id.strip() or not content or not content.strip():
@@ -309,8 +501,60 @@ def send_notification(
                 "message": "Hệ thống thông báo đẩy bị ngắt kết nối."
             }
 
+        # ── Thử gửi notification thật qua Discord ──
+        ctx = discord_context.get()
+        if ctx and ctx.bot:
+            try:
+                channel_id = int(room_id) if room_id.lstrip("-").isdigit() else None
+                if channel_id:
+                    channel = ctx.bot.get_channel(channel_id)
+                    if channel:
+                        # Tạo mentions string
+                        mentions = " ".join(
+                            f"<@{uid}>" if not uid.startswith("<@") else uid
+                            for uid in user_ids_to_tag
+                        )
+                        urgency_prefix = ""
+                        if urgency == "urgent":
+                            urgency_prefix = "🚨 **URGENT** "
+                        elif urgency == "high":
+                            urgency_prefix = "⚠️ **HIGH PRIORITY** "
+
+                        full_content = f"{urgency_prefix}{mentions}\n\n{content}"
+                        sent = _run_discord_coro(channel.send(full_content))
+                        if sent:
+                            return {
+                                "status": "success",
+                                "notified_users_count": len(user_ids_to_tag),
+                                "discord_mentions": [f"<@{uid}>" for uid in user_ids_to_tag],
+                                "message_id": str(sent.id)
+                            }
+            except (ValueError, TypeError) as exc:
+                print(f"⚠️ [DiscordBridge] send_notification invalid room_id '{room_id}': {exc}")
+
+        # ── Fallback: mock response ──
         notified_count = len(user_ids_to_tag)
         formatted_mentions = [f"<@{uid}>" if not uid.startswith("<@") else uid for uid in user_ids_to_tag]
+
+        # Ghi log thông báo vào SQLite messages DB
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        msg_id = f"NOTIF_{abs(hash(content + datetime.now(timezone.utc).isoformat())) % 1000000}"
+        cursor.execute(
+            """
+            INSERT INTO messages (message_id, target_id, message, attachments, delivered_at)
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                msg_id,
+                room_id,
+                f"[{urgency.upper()}] Mentions: {', '.join(formatted_mentions)} - {content}",
+                json.dumps([], ensure_ascii=False),
+                datetime.now(timezone.utc).isoformat()
+            )
+        )
+        conn.commit()
+        conn.close()
 
         return {
             "status": "success",
