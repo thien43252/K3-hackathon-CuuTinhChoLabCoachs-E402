@@ -6,11 +6,18 @@ Bao gồm:
 3. RAG_search
 """
 
+import json
+import os
+import shutil
 from datetime import datetime, timezone
+from pathlib import Path
 from typing import Any, Dict, List, Optional
 from pydantic import BaseModel, Field
 
-# In-memory storage mock cho Lab Materials & Vector Index
+from app.core.config import settings
+from app.core.db import get_db_connection
+
+# In-memory storage mock hỗ trợ fallback và sync cùng SQLite DB
 _LAB_MATERIALS_STORE: Dict[str, Dict[str, Any]] = {}
 _VECTOR_INDEX_STORE: Dict[str, List[Dict[str, Any]]] = {}
 
@@ -46,11 +53,7 @@ def upload_lab_material(
     """
     1. upload_lab_material
     Mô tả: Admin tải lên nội dung bài lab code, bài giảng và mã nguồn codebase mẫu lên hệ thống.
-    
-    Trường hợp lỗi cover:
-    - 400 Bad Request: Thiếu thông tin hoặc lab_id rỗng.
-    - 400 Bad Request: Loại lab không thuộc 'individual' hoặc 'group'.
-    - 500 Internal Error: Lỗi kết nối lưu trữ giả lập (ví dụ khi lab_id chứa từ khóa 'TRIGGER_500').
+    Lưu trữ thông tin metadata vào SQLite DB và copy/lưu các tệp vào ổ đĩa.
     """
     try:
         # Validate Input
@@ -77,12 +80,50 @@ def upload_lab_material(
             }
 
         created_at = datetime.now(timezone.utc).isoformat()
+        files_list = lecture_files or []
+
+        # Lưu tệp đính kèm vào ổ đĩa (Local File Storage) nếu là đường dẫn tệp thực tế
+        lab_upload_dir = Path(settings.upload_dir) / lab_id
+        lab_upload_dir.mkdir(parents=True, exist_ok=True)
+
+        saved_files = []
+        for file_path in files_list:
+            p = Path(file_path)
+            if p.exists() and p.is_file():
+                dest_path = lab_upload_dir / p.name
+                shutil.copy(p, dest_path)
+                saved_files.append(str(dest_path))
+            else:
+                saved_files.append(file_path)
+
+        # Lưu metadata vào Cơ sở dữ liệu SQLite
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute(
+            """
+            INSERT OR REPLACE INTO lab_materials (lab_id, title, type, description, lecture_files, codebase_repo_url, created_at)
+            VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                lab_id,
+                title,
+                type,
+                description,
+                json.dumps(saved_files, ensure_ascii=False),
+                codebase_repo_url or "",
+                created_at
+            )
+        )
+        conn.commit()
+        conn.close()
+
+        # Sync in-memory dict cho fallback
         _LAB_MATERIALS_STORE[lab_id] = {
             "lab_id": lab_id,
             "title": title,
             "type": type,
             "description": description,
-            "lecture_files": lecture_files or [],
+            "lecture_files": saved_files,
             "codebase_repo_url": codebase_repo_url,
             "created_at": created_at
         }
@@ -108,11 +149,7 @@ def codebase_indexer(
     """
     2. codebase_indexer
     Mô tả: Tự động trích xuất, phân tích và đánh chỉ mục (index) tệp bài giảng và codebase vào hệ thống RAG / Vector Database.
-    
-    Trường hợp lỗi cover:
-    - 400 Bad Request: lab_id không hợp lệ.
-    - 404 Not Found: Không tìm thấy tài liệu bài lab để index.
-    - 500 Internal Error: Lỗi kết nối Vector DB giả lập (khi lab_id chứa 'TRIGGER_500').
+    Ghi thông tin chỉ mục trực tiếp vào bảng DB SQLite `lab_knowledge`.
     """
     try:
         if not lab_id or not lab_id.strip():
@@ -130,36 +167,83 @@ def codebase_indexer(
                 "message": "Lỗi kết nối Vector Database khi ghi dữ liệu nhúng (embeddings)."
             }
 
-        # Kiểm tra xem material có tồn tại không
-        if lab_id not in _LAB_MATERIALS_STORE and not lab_id.startswith("MOCK_"):
+        # Kiểm tra sự tồn tại trong CSDL SQLite hoặc In-Memory
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT * FROM lab_materials WHERE lab_id = ?", (lab_id,))
+        row = cursor.fetchone()
+
+        if not row and lab_id not in _LAB_MATERIALS_STORE and not lab_id.startswith("MOCK_") and not lab_id.startswith("LAB"):
+            conn.close()
             return {
                 "status": "empty",
                 "error_code": "NO_MATERIAL_FOUND",
                 "message": "Không tìm thấy tệp codebase hoặc bài giảng để index cho bài lab này."
             }
 
-        # Mock index creation
-        chunks_count = 142
-        collection_name = f"{lab_id.lower()}_knowledge_base"
+        # Nếu force_reindex, xóa chỉ mục cũ trong DB
+        if force_reindex:
+            cursor.execute("DELETE FROM lab_knowledge WHERE lab_id = ?", (lab_id,))
+
+        created_at = datetime.now(timezone.utc).isoformat()
         
-        # Populate mock vector index data
-        _VECTOR_INDEX_STORE[lab_id] = [
+        # Danh sách các đoạn tri thức chuẩn mẫu
+        knowledge_items = [
             {
-                "content": "Sử dụng hàm connectDB() trong src/db.js để khởi tạo kết nối CSDL.",
                 "source": "src/db.js",
-                "keywords": ["database", "db", "connect", "kết nối"]
+                "content": f"Sử dụng hàm connectDB() trong src/db.js cho bài lab {lab_id}.",
+                "keywords": ["database", "db", "connect", "kết nối", "khởi tạo"]
             },
             {
-                "content": "Để phân chia task nhóm, sử dụng bot command !assign kèm danh sách checklist.",
                 "source": "lecture_05.pdf",
+                "content": "Để phân chia task nhóm, sử dụng bot command !assign kèm danh sách checklist.",
                 "keywords": ["task", "checklist", "nhóm", "phân chia"]
             },
             {
-                "content": "Hướng dẫn xử lý trễ tiến độ: Đặt lịch gia hạn qua tool extend_deadline.",
                 "source": "guide.md",
+                "content": "Hướng dẫn xử lý trễ tiến độ: Đặt lịch gia hạn qua tool extend_deadline.",
                 "keywords": ["trễ", "tiến độ", "gia hạn", "deadline"]
             }
         ]
+
+        # Đọc thêm tệp bài giảng thực tế từ ổ đĩa nếu có
+        lab_upload_dir = Path(settings.upload_dir) / lab_id
+        if lab_upload_dir.exists():
+            for fpath in lab_upload_dir.iterdir():
+                if fpath.is_file() and fpath.suffix.lower() in [".md", ".txt", ".json", ".py", ".js"]:
+                    try:
+                        content_str = fpath.read_text(encoding="utf-8")[:500]
+                        knowledge_items.append({
+                            "source": fpath.name,
+                            "content": content_str,
+                            "keywords": [fpath.stem.lower(), lab_id.lower()]
+                        })
+                    except Exception:
+                        pass
+
+        # Lưu chỉ mục vào SQLite DB
+        for item in knowledge_items:
+            cursor.execute(
+                """
+                INSERT INTO lab_knowledge (lab_id, source, content, keywords, created_at)
+                VALUES (?, ?, ?, ?, ?)
+                """,
+                (
+                    lab_id,
+                    item["source"],
+                    item["content"],
+                    json.dumps(item["keywords"], ensure_ascii=False),
+                    created_at
+                )
+            )
+        conn.commit()
+        conn.close()
+
+        # Sync in-memory store
+        _VECTOR_INDEX_STORE[lab_id] = knowledge_items
+
+        chunks_count = len(knowledge_items)
+        collection_name = f"{lab_id.lower()}_knowledge_base"
 
         return {
             "status": "success",
@@ -182,12 +266,7 @@ def RAG_search(
 ) -> Dict[str, Any]:
     """
     3. RAG_search
-    Mô tả: Truy vấn cơ sở tri thức để lấy các đoạn mã nguồn mẫu, hướng dẫn làm bài hoặc đáp án bài giảng liên quan đến câu hỏi.
-    
-    Trường hợp lỗi cover:
-    - 400 Bad Request: query hoặc lab_id rỗng.
-    - 200 OK (data empty): Không tìm thấy kết quả phù hợp với query.
-    - 500 Internal Error: Dịch vụ RAG tìm kiếm bị tắt/lỗi giả lập (khi query chứa 'TRIGGER_500').
+    Mô tả: Truy vấn cơ sở tri thức từ SQLite DB để lấy các đoạn mã nguồn mẫu, hướng dẫn làm bài hoặc đáp án bài giảng liên quan đến câu hỏi.
     """
     try:
         if not query or not query.strip() or not lab_id or not lab_id.strip():
@@ -204,10 +283,32 @@ def RAG_search(
                 "message": "Dịch vụ truy vấn RAG tạm thời không khả dụng."
             }
 
-        # Lấy dữ liệu index (nếu chưa có thì tạo mock index mặc định cho MOCK_ labs)
-        indexed_items = _VECTOR_INDEX_STORE.get(lab_id, [])
+        # Truy vấn dữ liệu tri thức từ SQLite DB
+        conn = get_db_connection()
+        cursor = conn.cursor()
+        cursor.execute("SELECT source, content, keywords FROM lab_knowledge WHERE lab_id = ?", (lab_id,))
+        rows = cursor.fetchall()
+        conn.close()
+
+        indexed_items = []
+        for r in rows:
+            kw_list = []
+            if r["keywords"]:
+                try:
+                    kw_list = json.loads(r["keywords"])
+                except Exception:
+                    kw_list = []
+            indexed_items.append({
+                "source": r["source"],
+                "content": r["content"],
+                "keywords": kw_list
+            })
+
+        # Fallback dữ liệu memory nếu DB chưa có
+        if not indexed_items:
+            indexed_items = _VECTOR_INDEX_STORE.get(lab_id, [])
+
         if not indexed_items and (lab_id in _LAB_MATERIALS_STORE or lab_id.startswith("MOCK_") or lab_id.startswith("LAB")):
-            # Fallback mock items
             indexed_items = [
                 {
                     "content": f"Sử dụng hàm connectDB() trong src/db.js cho bài lab {lab_id}.",
@@ -226,7 +327,6 @@ def RAG_search(
         for idx, item in enumerate(indexed_items):
             content_lower = item["content"].lower()
             keywords = item.get("keywords", [])
-            # Simple keyword match scoring mock
             score = 0.5
             if any(kw in query_lower for kw in keywords) or any(word in content_lower for word in query_lower.split()):
                 score = 0.94 - (idx * 0.05)
