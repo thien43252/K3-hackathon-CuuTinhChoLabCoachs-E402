@@ -1,0 +1,34 @@
+{
+  "case_id": "24",
+  "title": "Đặt lịch nhắc nhở cho thành viên trễ",
+  "input": "Đặt nhắc nhở cho bạn A sau 30 phút nữa về task T2 chưa xong",
+  "context": {
+    "user_id": "U_LEADER",
+    "channel_type": "group_room",
+    "group_id": "EVAL_GROUP_A",
+    "lab_id": "3",
+    "members": [
+      {
+        "id": "U_LEADER",
+        "name": "Leader"
+      },
+      {
+        "id": "U_MEM1",
+        "name": "Mem1"
+      },
+      {
+        "id": "U_MEM2",
+        "name": "Mem2"
+      },
+      {
+        "id": "U_MEM3",
+        "name": "Mem3"
+      }
+    ]
+  },
+  "applies": "Đúng có căn cứ · Đúng workflow · Hữu ích",
+  "status": "answered",
+  "assistant_text": "Rất tiếc, mình không thể đặt nhắc nhở cho bạn A. Bạn có thể sử dụng các ứng dụng nhắc nhở hoặc lịch để thực hiện việc này nhé! Nếu bạn cần hỗ trợ gì khác liên quan đến bài lab, hãy cho mình biết!",
+  "tool_events": [],
+  "rounds": 1
+}

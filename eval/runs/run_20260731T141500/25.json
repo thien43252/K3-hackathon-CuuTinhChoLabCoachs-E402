@@ -1,0 +1,193 @@
+{
+  "case_id": "25",
+  "title": "Xin xem code đồng đội khi gặp khó",
+  "input": "Mình làm task T3 không ra, có bạn nào trong nhóm xong chưa để mình tham khảo?",
+  "context": {
+    "user_id": "U_MEM1",
+    "channel_type": "group_room",
+    "group_id": "EVAL_GROUP_A",
+    "lab_id": "3",
+    "members": [
+      {
+        "id": "U_LEADER",
+        "name": "Leader"
+      },
+      {
+        "id": "U_MEM1",
+        "name": "Mem1"
+      },
+      {
+        "id": "U_MEM2",
+        "name": "Mem2"
+      },
+      {
+        "id": "U_MEM3",
+        "name": "Mem3"
+      }
+    ]
+  },
+  "applies": "Đúng có căn cứ · Đúng workflow · Hữu ích",
+  "status": "answered",
+  "assistant_text": "Hiện tại, tất cả các thành viên trong nhóm đều đang trong quá trình thực hiện task và chưa có ai hoàn thành. Cụ thể:\n\n- **Mem1**: Đang làm task T3 (Task 3: ReAct Loop & Safeguards)\n- **Mem2**: Đang làm task T3 (Task 3: ReAct Loop & Safeguards)\n- **Mem3**: Đang làm task T3 (Task 3: ReAct Loop & Safeguards)\n- **Leader**: Đang làm task T3 (Task 3: ReAct Loop & Safeguards)\n\nTất cả các thành viên đều chưa hoàn thành checklist cho task này. Bạn có thể tham khảo ý kiến từ các bạn trong nhóm để cùng nhau giải quyết vấn đề nhé!",
+  "tool_events": [
+    {
+      "tool": "track_group_progress",
+      "args": {},
+      "result": {
+        "status": "success",
+        "group_id": "EVAL_GROUP_A",
+        "overall_completion_percent": 0.0,
+        "progress_bar": "[░░░░░░░░░░░░░░░░░░░░] 0.0%",
+        "total_tasks": 16,
+        "completed_tasks": 0,
+        "members_progress": [
+          {
+            "user_id": "U_MEM1",
+            "task_id": "T3",
+            "task_title": "Task 3: ReAct Loop & Safeguards",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 6,
+            "task_completion_pct": 0.0
+          },
+          {
+            "user_id": "U_MEM1",
+            "task_id": "T1",
+            "task_title": "Task 1: Định hình & Đánh giá Agentic Fit",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 6,
+            "task_completion_pct": 0.0
+          },
+          {
+            "user_id": "U_MEM1",
+            "task_id": "T2",
+            "task_title": "Task 2: Baseline Chatbot & Khai báo Tool Specs",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 6,
+            "task_completion_pct": 0.0
+          },
+          {
+            "user_id": "U_MEM1",
+            "task_id": "T4",
+            "task_title": "Task 4: Tương tác liên nhóm & Hybrid Flowchart",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 6,
+            "task_completion_pct": 0.0
+          },
+          {
+            "user_id": "U_MEM2",
+            "task_id": "T3",
+            "task_title": "Task 3: ReAct Loop & Safeguards",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 6,
+            "task_completion_pct": 0.0
+          },
+          {
+            "user_id": "U_MEM2",
+            "task_id": "T1",
+            "task_title": "Task 1: Định hình & Đánh giá Agentic Fit",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 6,
+            "task_completion_pct": 0.0
+          },
+          {
+            "user_id": "U_MEM2",
+            "task_id": "T2",
+            "task_title": "Task 2: Baseline Chatbot & Khai báo Tool Specs",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 6,
+            "task_completion_pct": 0.0
+          },
+          {
+            "user_id": "U_MEM2",
+            "task_id": "T4",
+            "task_title": "Task 4: Tương tác liên nhóm & Hybrid Flowchart",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 6,
+            "task_completion_pct": 0.0
+          },
+          {
+            "user_id": "U_MEM3",
+            "task_id": "T3",
+            "task_title": "Task 3: ReAct Loop & Safeguards",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 6,
+            "task_completion_pct": 0.0
+          },
+          {
+            "user_id": "U_MEM3",
+            "task_id": "T1",
+            "task_title": "Task 1: Định hình & Đánh giá Agentic Fit",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 6,
+            "task_completion_pct": 0.0
+          },
+          {
+            "user_id": "U_MEM3",
+            "task_id": "T2",
+            "task_title": "Task 2: Baseline Chatbot & Khai báo Tool Specs",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 6,
+            "task_completion_pct": 0.0
+          },
+          {
+            "user_id": "U_MEM3",
+            "task_id": "T4",
+            "task_title": "Task 4: Tương tác liên nhóm & Hybrid Flowchart",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 6,
+            "task_completion_pct": 0.0
+          },
+          {
+            "user_id": "U_LEADER",
+            "task_id": "T3",
+            "task_title": "Task 3: ReAct Loop & Safeguards",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 5,
+            "task_completion_pct": 0.0
+          },
+          {
+            "user_id": "U_LEADER",
+            "task_id": "T1",
+            "task_title": "Task 1: Định hình & Đánh giá Agentic Fit",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 5,
+            "task_completion_pct": 0.0
+          },
+          {
+            "user_id": "U_LEADER",
+            "task_id": "T2",
+            "task_title": "Task 2: Baseline Chatbot & Khai báo Tool Specs",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 5,
+            "task_completion_pct": 0.0
+          },
+          {
+            "user_id": "U_LEADER",
+            "task_id": "T4",
+            "task_title": "Task 4: Tương tác liên nhóm & Hybrid Flowchart",
+            "status": "in_progress",
+            "completed_checklist": 0,
+            "total_checklist": 5,
+            "task_completion_pct": 0.0
+          }
+        ]
+      }
+    }
+  ],
+  "rounds": 2
+}

@@ -1,0 +1,34 @@
+{
+  "case_id": "10",
+  "title": "Hoàn thành lab nhóm, yêu cầu reflection",
+  "input": "Nhóm xong hết bài lab rồi, tạo reflection cho từng người đi",
+  "context": {
+    "user_id": "U_LEADER",
+    "channel_type": "group_room",
+    "group_id": "EVAL_GROUP_A",
+    "lab_id": "3",
+    "members": [
+      {
+        "id": "U_LEADER",
+        "name": "Leader"
+      },
+      {
+        "id": "U_MEM1",
+        "name": "Mem1"
+      },
+      {
+        "id": "U_MEM2",
+        "name": "Mem2"
+      },
+      {
+        "id": "U_MEM3",
+        "name": "Mem3"
+      }
+    ]
+  },
+  "applies": "Đúng có căn cứ",
+  "status": "answered",
+  "assistant_text": "Để tạo reflection cho từng thành viên trong nhóm, mình cần biết nội dung cụ thể mà các bạn muốn đưa vào reflection. Bạn có thể cung cấp cho mình một số thông tin như:\n\n1. Những điểm mạnh và điểm yếu mà mỗi thành viên đã thể hiện trong quá trình làm lab.\n2. Những bài học rút ra từ trải nghiệm này.\n3. Cảm nhận cá nhân của từng thành viên về quá trình làm việc nhóm.\n\nNếu bạn có thông tin cụ thể cho từng thành viên, hãy chia sẻ để mình có thể giúp bạn tạo reflection nhé!",
+  "tool_events": [],
+  "rounds": 1
+}

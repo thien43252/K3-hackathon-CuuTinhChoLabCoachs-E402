@@ -1,0 +1,34 @@
+{
+  "case_id": "17",
+  "title": "Quên file .env trước deadline",
+  "input": "Mình chạy code mà bị lỗi `KeyError: 'DATABASE_URL'` khi start server, deadline còn 15 phút",
+  "context": {
+    "user_id": "U_MEM1",
+    "channel_type": "group_room",
+    "group_id": "EVAL_GROUP_A",
+    "lab_id": "3",
+    "members": [
+      {
+        "id": "U_LEADER",
+        "name": "Leader"
+      },
+      {
+        "id": "U_MEM1",
+        "name": "Mem1"
+      },
+      {
+        "id": "U_MEM2",
+        "name": "Mem2"
+      },
+      {
+        "id": "U_MEM3",
+        "name": "Mem3"
+      }
+    ]
+  },
+  "applies": "Đúng có căn cứ · Đúng workflow · Hữu ích",
+  "status": "answered",
+  "assistant_text": "Lỗi `KeyError: 'DATABASE_URL'` thường xảy ra khi biến môi trường `DATABASE_URL` không được định nghĩa trong file `.env` của bạn. Để khắc phục lỗi này, bạn cần thực hiện các bước sau:\n\n1. **Kiểm tra file `.env`**: Đảm bảo rằng bạn đã tạo file `.env` trong thư mục gốc của dự án và trong file này có khai báo biến `DATABASE_URL`. Ví dụ:\n   ```\n   DATABASE_URL=your_database_connection_string\n   ```\n\n2. **Cài đặt thư viện**: Nếu bạn chưa cài đặt thư viện `python-dotenv`, hãy cài đặt nó bằng lệnh:\n   ```\n   pip install python-dotenv\n   ```\n\n3. **Tải biến môi trường**: Đảm bảo rằng bạn đã tải biến môi trường từ file `.env` trong mã nguồn của bạn. Bạn có thể thêm đoạn mã sau vào file khởi động của ứng dụng (thường là `app.py` hoặc `main.py`):\n   ```python\n   from dotenv import load_dotenv\n   import os\n\n   load_dotenv()  # Tải biến môi trường từ file .env\n   ```\n\n4. **Khởi động lại server**: Sau khi thực hiện các bước trên, hãy khởi động lại server của bạn.\n\nNếu bạn đã thực hiện tất cả các bước trên mà vẫn gặp lỗi, hãy cung cấp thêm thông tin về cấu trúc file của bạn hoặc nội dung file `.env` (không bao gồm thông tin nhạy cảm) để mình có thể hỗ trợ thêm.",
+  "tool_events": [],
+  "rounds": 1
+}

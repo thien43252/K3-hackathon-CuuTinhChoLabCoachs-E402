@@ -1,0 +1,34 @@
+{
+  "case_id": "18",
+  "title": "Thư viện chưa khai trong requirements.txt",
+  "input": "Code mình chạy ngon trên máy local nhưng khi TA pull về chạy thì lỗi ModuleNotFoundError, sắp hết giờ rồi",
+  "context": {
+    "user_id": "U_MEM1",
+    "channel_type": "group_room",
+    "group_id": "EVAL_GROUP_A",
+    "lab_id": "3",
+    "members": [
+      {
+        "id": "U_LEADER",
+        "name": "Leader"
+      },
+      {
+        "id": "U_MEM1",
+        "name": "Mem1"
+      },
+      {
+        "id": "U_MEM2",
+        "name": "Mem2"
+      },
+      {
+        "id": "U_MEM3",
+        "name": "Mem3"
+      }
+    ]
+  },
+  "applies": "Đúng có căn cứ · Đúng workflow · Hữu ích",
+  "status": "answered",
+  "assistant_text": "Để giúp bạn gỡ lỗi vấn đề này, mình cần thêm thông tin chi tiết hơn. Bạn có thể cung cấp cho mình:\n\n1. Mã task mà bạn đang thực hiện.\n2. Mô tả cụ thể về lỗi (có thể là thông báo lỗi hoặc mô tả ngắn gọn).\n3. Nếu có, bạn có thể dán log lỗi từ Terminal hoặc IDE của bạn.\n\nVới những thông tin này, mình sẽ giúp bạn phân tích và tìm ra giải pháp.",
+  "tool_events": [],
+  "rounds": 1
+}

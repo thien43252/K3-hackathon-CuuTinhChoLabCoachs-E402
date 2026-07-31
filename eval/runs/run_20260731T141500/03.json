@@ -1,0 +1,17 @@
+{
+  "case_id": "03",
+  "title": "Nhóm trưởng khởi tạo bài lab nhóm",
+  "input": "Mình là nhóm trưởng, bắt đầu bài lab nhóm hôm nay nhé",
+  "context": {
+    "user_id": "U_LEADER",
+    "channel_type": "general",
+    "group_id": null,
+    "lab_id": "3",
+    "members": []
+  },
+  "applies": "Đúng workflow",
+  "status": "answered",
+  "assistant_text": "Chào bạn! Để bắt đầu, mình sẽ tạo một phòng nhóm riêng cho các thành viên trong nhóm. Bạn hãy @mention từng thành viên trong nhóm để mình có thể thêm họ vào phòng nhé!",
+  "tool_events": [],
+  "rounds": 1
+}

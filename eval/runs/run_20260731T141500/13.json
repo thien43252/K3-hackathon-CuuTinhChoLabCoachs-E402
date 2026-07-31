@@ -1,0 +1,34 @@
+{
+  "case_id": "13",
+  "title": "Báo lỗi quá ngắn, không có log",
+  "input": "Em bị lỗi rồi",
+  "context": {
+    "user_id": "U_MEM1",
+    "channel_type": "group_room",
+    "group_id": "EVAL_GROUP_A",
+    "lab_id": "3",
+    "members": [
+      {
+        "id": "U_LEADER",
+        "name": "Leader"
+      },
+      {
+        "id": "U_MEM1",
+        "name": "Mem1"
+      },
+      {
+        "id": "U_MEM2",
+        "name": "Mem2"
+      },
+      {
+        "id": "U_MEM3",
+        "name": "Mem3"
+      }
+    ]
+  },
+  "applies": "Đúng workflow · Hữu ích",
+  "status": "answered",
+  "assistant_text": "Bạn có thể mô tả chi tiết về lỗi mà bạn gặp phải không? Vui lòng cung cấp thông tin về mã task đang thực hiện, mô tả lỗi và nếu có, hãy dán log lỗi từ Terminal hoặc IDE để mình có thể giúp bạn tốt hơn.",
+  "tool_events": [],
+  "rounds": 1
+}
