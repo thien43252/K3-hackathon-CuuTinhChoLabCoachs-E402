@@ -1,57 +1,50 @@
 """
 Package codebase/app/tools
-Export tập trung toàn bộ 15 Agent Tools cho AI Agent (phiên bản real implementation).
+Export tập trung Agent Tools cho AI Agent.
 """
 
-from app.tools.db_tools import (
-    upload_lab_material,
-    get_user_context,
-    assign_task,
-    track_group_progress,
-    extend_deadline,
-    fetch_peer_solution
+from app.tools.knowledge_tools import (
+    get_lab_content,
 )
 
-from app.tools.ai_tools import (
-    codebase_indexer,
-    RAG_search,
-    parse_lab_requirements,
-    generate_reflection,
-    analyze_student_issue
-)
-
-from app.tools.discord_tools import (
+from app.tools.platform_tools import (
     create_group_room,
-    send_message,
-    send_notification,
-    schedule_reminder
+    CreateGroupRoomInput,
+)
+
+from app.tools.task_tools import (
+    generate_group_plan,
+    get_group_plan,
+    track_group_progress,
+    update_group_progress,
+    list_members,
+    GenerateGroupPlanInput,
+    GetGroupPlanInput,
+    TrackGroupProgressInput,
+    UpdateGroupProgressInput,
+)
+
+from app.tools.troubleshooting_tools import (
+    analyze_student_issue,
+    AnalyzeStudentIssueInput,
 )
 
 ALL_TOOLS = {
-    # Admin & Knowledge Tools
-    "upload_lab_material": upload_lab_material,
-    "codebase_indexer": codebase_indexer,
-    "RAG_search": RAG_search,
+    # Knowledge & Content Tools
+    "get_lab_content": get_lab_content,
 
     # Platform & Context Tools
-    "get_user_context": get_user_context,
     "create_group_room": create_group_room,
-    "send_message": send_message,
-    "send_notification": send_notification,
 
     # Task Management Tools
-    "parse_lab_requirements": parse_lab_requirements,
-    "assign_task": assign_task,
+    "generate_group_plan": generate_group_plan,
+    "get_group_plan": get_group_plan,
     "track_group_progress": track_group_progress,
-    "generate_reflection": generate_reflection,
-
-    # Scheduler & Remind Tools
-    "schedule_reminder": schedule_reminder,
-    "extend_deadline": extend_deadline,
+    "update_group_progress": update_group_progress,
+    "list_members": list_members,
 
     # Troubleshooting Tools
     "analyze_student_issue": analyze_student_issue,
-    "fetch_peer_solution": fetch_peer_solution,
 }
 
 # Mapping tên tool với hàm xử lý thực tế
@@ -79,21 +72,14 @@ def to_openai_tools(declarations: list) -> list:
     ]
 
 __all__ = [
-    "upload_lab_material",
-    "codebase_indexer",
-    "RAG_search",
-    "get_user_context",
+    "get_lab_content",
     "create_group_room",
-    "send_message",
-    "send_notification",
-    "parse_lab_requirements",
-    "assign_task",
+    "generate_group_plan",
+    "get_group_plan",
     "track_group_progress",
-    "generate_reflection",
-    "schedule_reminder",
-    "extend_deadline",
+    "update_group_progress",
+    "list_members",
     "analyze_student_issue",
-    "fetch_peer_solution",
     "ALL_TOOLS",
     "TOOL_FUNCTIONS",
     "load_tool_declarations",
