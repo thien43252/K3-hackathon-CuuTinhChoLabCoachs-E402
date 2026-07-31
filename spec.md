@@ -1,6 +1,4 @@
-nho[Sản phẩm 2]: ...
-
-# AI SPEC — [Tên lát cắt] · Nhóm [XX] · Zone [X]
+# AI SPEC — Trợ Lý Quản Lý Tiến Độ & Hỗ trợ giải đáp Cho Bài Labcode · Nhóm 01 · Zone 1B
 
 Hướng: B — Trợ lý Học viên
 Loại: Tính năng mới
