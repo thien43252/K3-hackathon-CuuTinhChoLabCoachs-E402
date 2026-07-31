@@ -164,7 +164,7 @@ class LabInsightExtractor:
                       "deliverable": {"type": "string", "description": "Deliverable cần nộp"},
                       "estimated_minutes": {"type": "number", "description": "Thời gian ước tính (phút)"}
                     },
-                    "required": ["name", "description", "checklist"],
+                    "required": ["name", "description", "checklist", "deliverable", "estimated_minutes"],
                     "additionalProperties": False
                   }
                 },

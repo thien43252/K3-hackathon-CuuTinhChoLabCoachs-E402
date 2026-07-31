@@ -9,16 +9,15 @@ tools:
   # ---------------- Knowledge & Content Tools ----------------
   - name: get_lab_content
     description: >
-      Lấy nội dung bài lab đã được Admin phân tích từ cache (kết quả clone repo + phân tích .md).
-      Trả về mục tiêu bài lab (lab_objective), danh sách task, tiêu chí đánh giá (grading_rubrics),
-      bẫy lỗi thường gặp (common_pitfalls), và danh sách tài liệu .md (sitemap).
+      Lấy nội dung bài lab từ cache (insights + documents). KHÔNG tự bịa nội dung.
+      lab_id có thể để trống — tự động resolve lab hôm nay từ Discord context.
     parameters:
       type: object
       properties:
         lab_id:
           type: string
-          description: "Mã bài lab cần lấy nội dung (ví dụ: 'DAY05', 'LAB05_GROUP')."
-      required: [lab_id]
+          description: "Mã bài lab (ví dụ: '3', '4'). Để trống để auto-resolve từ context."
+      required: []
 
   # ---------------- Platform & Context Tools ----------------
   - name: create_group_room

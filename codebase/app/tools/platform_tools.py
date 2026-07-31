@@ -153,7 +153,12 @@ def create_group_room(
                 if is_private:
                     overwrites = {
                         guild.default_role: discord.PermissionOverwrite(read_messages=False),
-                        guild.me: discord.PermissionOverwrite(read_messages=True, send_messages=True),
+                        guild.me: discord.PermissionOverwrite(
+                            read_messages=True, send_messages=True,
+                            read_message_history=True, embed_links=True,
+                            attach_files=True, add_reactions=True,
+                            use_external_emojis=True,
+                        ),
                     }
                     # Phân quyền cho từng member (hỗ trợ ID số hoặc tên)
                 added_members = []
