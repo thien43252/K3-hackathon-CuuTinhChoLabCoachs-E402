@@ -251,17 +251,17 @@ Loại: Tính năng mới
 
 - **Phân công công việc theo tên thành viên**:
 
-  * Phạm Khắc Duy - 2A202601757 - leader
-  * Phạm Đức Thiện - 2A202601981
-  * Nguyễn Ngọc Thuận - 2A202601949
-  * Trần Công Chiến - 2A202601053
+  * Phạm Khắc Duy - 2A202601757 - leader: lên plan, phân chia công việc, viết code agent
+  * Phạm Đức Thiện - 2A202601981 - viết docs, system prompt
+  * Nguyễn Ngọc Thuận - 2A202601949 - viết tool
+  * Trần Công Chiến - 2A202601053 - viết code discord bot, ghép nối sản phẩm, hoàn thiện và cải tiến
 - **Willing users (3 người ngoài nhóm) + Kế hoạch vòng Validation CP5**:
 
   * **Danh sách 3 Willing Users**:
-    1. *Nguyễn Văn Anh* (Học viên Zone 2)
-    2. *Trần Thị Bình* (Học viên Zone 3)
-    3. *Lê Hoàng Cường* (Học viên Lớp K3)
-  * **Kế hoạch phiên thử nghiệm (10 phút/người tại CP5)**:
+    1. Xuân Trường (học viên Zone B)
+    2. Nguyễn Huy Hoàng (Học viên Zone B)
+    3. *Ngô hằng* (Học viên Zone B)
+  * **Kế hoạch phiên thử nghiệm**:
     1. *Giao task thật*: Yêu cầu người thử dùng bot để chia task lab nhóm và gửi mô tả 1 lỗi code bị kẹt. Người quan sát im lặng ghi chép lại các bước bấm và điểm bị kẹt.
     2. *Phỏng vấn 3 câu chuẩn Guide §4.2*:
        - Q1: *"Điều gì khó hiểu hoặc gây khó chịu nhất trong quá trình bạn dùng bot?"*
@@ -270,7 +270,7 @@ Loại: Tính năng mới
     3. *Người ghi log*: **Thành viên 3 (Validation Lead)** ghi lại nguyên văn phản hồi vào file `validation/feedback_log.md`.
 - **Multi-prototype (Trục khác biệt của 2 phương án thiết kế)**:
 
-  * *Phương án A (Push / Scheduled Bot)*: Bot tự động gửi tin nhắn nhắc nhở và cảnh báo trễ tiến độ theo lịch hẹn cron định kỳ.
+  * *Phương án A (Push / Scheduled Bot)*: Bot tự động gửi tin nhắn nhắc nhở và cảnh báo trễ tiến độ theo lịch hẹn định kỳ.
   * *Phương án B (Pull / On-demand Bot — CHỌN)*: Bot chỉ phản hồi khi học viên hoặc nhóm trưởng chủ động gọi lệnh/tag bot trong room.
   * *Lý do chọn B*: Phương án A có nguy cơ cao gây phiền nhiễu khi nhắn liên tục (vi phạm nguyên tắc HAX G3 - Đúng lúc đúng chỗ). Phương án B giúp trao quyền kiểm soát chủ động cho học viên (HAX G17 / PAIR Control) và tối ưu chi phí API call.
 
