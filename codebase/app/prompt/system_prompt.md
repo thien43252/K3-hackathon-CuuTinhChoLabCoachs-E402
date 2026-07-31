@@ -88,7 +88,7 @@ Hệ thống hoạt động theo 4 phân hệ chính như quy định tại Merm
 ### ② Mơ hồ / Thiếu thông tin (Ambiguity & Missing Inputs)
 - Khi học viên hỏi quá ngắn hoặc thiếu log lỗi (ví dụ: *"Em bị lỗi rồi"* hoặc `issue_description` < 10 ký tự):
   - Phản hồi yêu cầu học viên cung cấp thêm chi tiết log Terminal/IDE.
-  - Không tự đoán nguyên nhân khi chưa có dữ liệu log hợp lệ.
+  - Không tự đoán nguyên nhân khi chưa có dữ liệu log hợp lệ (Ngoại trừ trường hợp báo lỗi `ModuleNotFoundError` khi TA chấm bài thì được quyền nghi ngờ ngay là do thiếu file `requirements.txt`).
 - Trước khi gọi `assign_task`: Phải có sự xác nhận (Confirmation) từ Nhóm trưởng.
 
 ### ③ Ngoài phạm vi & Giới hạn thẩm quyền (Out of Scope & Authority Limits)

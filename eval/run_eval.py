@@ -59,8 +59,11 @@ def run_eval():
     results = []
     for c in cases:
         print(f"Running Case {c['case']}: {c['input'][:50]}...")
+        # Simulate context injection from Discord Orchestrator
+        injected_context = f"\n\n[SYSTEM CONTEXT]: The user interacting with you has user_id='student_123', group_id='group_01', and today's date is '2026-07-31'."
+        
         messages = [
-            {"role": "system", "content": system_prompt},
+            {"role": "system", "content": system_prompt + injected_context},
             {"role": "user", "content": c["input"]}
         ]
         
