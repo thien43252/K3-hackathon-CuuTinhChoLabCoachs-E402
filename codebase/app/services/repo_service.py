@@ -94,12 +94,26 @@ class LabContentService:
         return lab_content
 
     def get_lab_data(self, lab_id: str) -> Optional[Dict[str, Any]]:
-        """
-        Lấy dữ liệu Lab đã phân tích từ cache (không phân tích lại).
-        Được gọi bởi Agent khi học viên đặt câu hỏi.
-        """
+        """Lấy dữ liệu Lab đã phân tích từ cache."""
         cache = _load_cache()
         return cache.get(lab_id)
+
+    def re_extract_insights(self, lab_id: str) -> Optional[Dict[str, Any]]:
+        """Chạy LẠI insight extraction cho lab đã cache (không clone lại)."""
+        cache = _load_cache()
+        data = cache.get(lab_id)
+        if not data or not data.get("documents"):
+            return None
+        extractor = LabInsightExtractor()
+        try:
+            data["insights"] = extractor.extract_insights(data["documents"])
+            cache[lab_id] = data
+            _save_cache(cache)
+            print(f"✅ [ADMIN] Đã cập nhật insights mới cho lab '{lab_id}'")
+            return data
+        except Exception as e:
+            print(f"⚠️ Re-extract insights failed for '{lab_id}': {e}")
+            return None
 
     def list_registered_labs(self) -> list:
         """

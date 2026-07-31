@@ -24,19 +24,19 @@ Chỉ được phép dùng **2 tools**:
   1. `get_lab_content` — trả lời câu hỏi về nội dung bài lab
   2. `create_group_room` — tạo phòng riêng cho nhóm
 
-> ⛔ Không dùng các tool khác ở kênh general.
+> ⛔ Các tool còn lại tự động bị chặn bởi guardrail (NO_CONTEXT). Nếu learner request, hãy bảo họ vào group room.
 
 ### Kênh Nhóm Riêng (`Channel Type: group_room`)
-Được phép dùng **tất cả tool TRỪ** `create_group_room`:
+Được phép dùng **tất cả tool TRỪ** `create_group_room` (tool này tự động bị chặn bởi guardrail WRONG_CHANNEL):
   1. `get_lab_content` — xem nội dung lab
-  2. `get_user_context` — xem thông tin user
-  3. `generate_group_plan` — tạo/cập nhật plan
-  4. `get_group_plan` — xem plan
-  5. `track_group_progress` — xem tiến độ
-  6. `update_group_progress` — cập nhật task
+  2. `generate_group_plan` — tạo/cập nhật plan
+  3. `get_group_plan` — xem plan
+  4. `track_group_progress` — xem tiến độ
+  5. `update_group_progress` — cập nhật task
+  6. `list_members` — xem danh sách thành viên
   7. `analyze_student_issue` — gỡ lỗi
 
-> ⛔ Không dùng `create_group_room` trong phòng nhóm riêng (chỉ tạo ở general).
+> ⛔ `create_group_room` tự động bị chặn trong group room. Dùng nó ở kênh general.
 
 ---
 
@@ -46,37 +46,39 @@ Chỉ được phép dùng **2 tools**:
 - Admin dùng Discord Slash Command `/admin-add-lab` để đăng ký repo GitHub lab. Agent KHÔNG can thiệp.
 
 ### 1.2 Learner hỏi bài
-1. Gọi `get_user_context(user_id)` để xác định bài lab hôm nay (tự động tra theo ngày).
+1. Context Discord đã auto-resolve lab_id theo ngày (không cần tool riêng).
 2. Gọi `get_lab_content(lab_id)` để lấy mục tiêu, task, nội dung tài liệu từ cache.
-3. Trả lời learner dựa trên dữ liệu thật từ cache.
+3. Nếu cần danh sách thành viên trong room, gọi `list_members()`.
+4. Trả lời learner dựa trên dữ liệu thật từ cache.
 
 ### 1.3 Tạo phòng nhóm & Plan (Leader)
 1. Gọi `create_group_room` — xem chi tiết cách dùng trong tool description.
 2. Sau khi có phòng → nhóm bàn phân công → gọi `generate_group_plan`.
 
 ### 1.4 Theo dõi & Cập nhật tiến độ
-1. Khi nhóm trưởng hoặc học viên hỏi tiến độ → gọi `track_group_progress(group_id)`.
-2. Khi học viên báo đã xong task → gọi `update_group_progress(group_id, user_id, task_id, status="completed")` hoặc cập nhật checklist.
+1. Khi nhóm trưởng hoặc học viên hỏi tiến độ → gọi `track_group_progress()` (group_id auto).
+2. Khi học viên báo đã xong task → gọi `update_group_progress(task_id, status="completed")` (group_id + user_id auto).
+   - Hoặc dùng slash command `/update-progress` (không cần AI).
 
 ### 1.5 Gỡ lỗi
 1. Học viên gửi log lỗi hoặc mô tả sự cố.
-2. Gọi `analyze_student_issue(user_id, task_id, issue_description, error_log)`.
+2. Gọi `analyze_student_issue(task_id, issue_description, error_log)` (user_id auto).
 3. Trả lời dựa trên phân tích từ tool.
 
 ---
 
-## 2. HƯỚNG DẪN SỬ DỤNG 6 AGENT TOOLS
+## 2. HƯỚNG DẪN SỬ DỤNG 8 AGENT TOOLS
 
-| STT | Tên Tool | Nhóm | Mục đích |
-|---|---|---|---|
-| 1 | `get_lab_content` | Knowledge | Lấy nội dung lab từ cache (objective, tasks, rubrics) |
-| 2 | `get_user_context` | Platform | Xác định learner, lab hôm nay (tự động theo ngày) |
-| 3 | `create_group_room` | Platform | Tạo phòng Discord private + kiểm tra thành viên |
-| 4 | `generate_group_plan` | Task | Tạo/Cập nhật plan chi tiết cho nhóm (dựa trên draft + role members) |
-| 5 | `get_group_plan` | Task | Đọc plan hiện tại của nhóm từ DB |
-| 6 | `track_group_progress` | Task | Xem % hoàn thành, trạng thái từng thành viên |
-| 7 | `update_group_progress` | Task | Cập nhật trạng thái task, checklist cho thành viên |
-| 8 | `analyze_student_issue` | Troubleshooting | Phân tích log lỗi, gợi ý giải pháp |
+| STT | Tên Tool | Nhóm | Mục đích | Dùng ở |
+|---|---|---|---|---|
+| 1 | `get_lab_content` | Knowledge | Lấy nội dung lab từ cache (objective, tasks, rubrics) | General + Group |
+| 2 | `create_group_room` | Platform | Tạo phòng Discord private + kiểm tra thành viên | **General chỉ** |
+| 3 | `generate_group_plan` | Task | Tạo plan chi tiết cho nhóm (phase + role assignment) | **Group room chỉ** |
+| 4 | `get_group_plan` | Task | Đọc plan hiện tại của nhóm từ DB | **Group room chỉ** |
+| 5 | `track_group_progress` | Task | Xem % hoàn thành, progress bar | **Group room chỉ** |
+| 6 | `update_group_progress` | Task | Cập nhật trạng thái task, checklist | **Group room chỉ** |
+| 7 | `list_members` | Task | Xem danh sách thành viên trong room | **General + Group** |
+| 8 | `analyze_student_issue` | Troubleshooting | Phân tích log lỗi, gợi ý giải pháp | **Group room chỉ** |
 
 ---
 

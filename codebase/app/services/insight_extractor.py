@@ -21,11 +21,21 @@ class LabInsightExtractor:
         Nhận danh sách tài liệu thô (.md đã phân tích headings/sections)
         và trả về bộ Insight cô đọng: Mục tiêu, Cài đặt, Danh sách Task, Rubric chấm điểm, Bẫy lỗi.
         """
-        # Hợp nhất nội dung các file .md chính thành một nguồn tài liệu tổng quan để phân tích
-        merged_docs = []
+        # Build content từ sections (có cấu trúc) thay vì raw_content (phẳng)
+        # Mỗi file cap 3000 chars, total cap 20000 chars
+        doc_texts = []
         for doc in documents:
-            merged_docs.append(f"### FILE: {doc['relative_path']}\n{doc['raw_content']}")
-        full_content = "\n\n".join(merged_docs)
+            fn = doc.get("relative_path", "unknown")
+            parts = [f"### FILE: {fn}"]
+            for sec in doc.get("sections", []):
+                parts.append(f"## {sec['heading']}\n{sec['content'][:500]}")
+            body = "\n".join(parts)
+            if len(body) > 3000:
+                body = body[:3000] + "\n...(truncated)"
+            doc_texts.append(body)
+        full_content = "\n\n".join(doc_texts)
+        if len(full_content) > 20000:
+            full_content = full_content[:20000]
 
         # Xây dựng danh sách mức độ ưu tiên chạy AI dựa trên .env
         ai_providers = []
@@ -57,31 +67,47 @@ class LabInsightExtractor:
         url = f"https://generativelanguage.googleapis.com/v1beta/models/gemini-2.5-flash:generateContent?key={self.api_key}"
         
         prompt = (
-            "Bạn là một chuyên gia phân tích bài toán thực hành AI cho sinh viên.\n"
-            "Hãy phân tích tài liệu bài Lab dưới đây và trích xuất ra thông tin tri thức có cấu trúc:\n\n"
-            f"{content[:20000]}"  # Giới hạn nội dung tránh quá tải prompt thô
+            "Bạn là chuyên gia phân tích bài lab cho sinh viên.\n"
+            "Phân tích TẤT CẢ file .md dưới đây và trích xuất thông tin CHI TIẾT (không tóm tắt quá mức):\n\n"
+            f"{content[:20000]}"
         )
 
         schema = {
             "type": "OBJECT",
             "properties": {
-                "lab_objective": {"type": "STRING", "description": "Tóm tắt mục tiêu cốt lõi của bài Lab"},
-                "setup_instructions": {"type": "STRING", "description": "Các bước chuẩn bị & cài đặt môi trường cần thiết"},
+                "lab_objective": {"type": "STRING", "description": "Mục tiêu + context đầy đủ của bài lab (3-5 câu)"},
+                "timeline": {"type": "STRING", "description": "Timeline/lịch trình (thời lượng, các mốc checkpoint)"},
+                "setup_instructions": {"type": "STRING", "description": "Từng bước cài đặt: clone, venv, pip install, .env, smoke test"},
                 "tasks": {
                   "type": "ARRAY",
                   "items": {
                     "type": "OBJECT",
                     "properties": {
-                      "name": {"type": "STRING", "description": "Tên hoặc ID của Task (ví dụ: Task 1, CP1)"},
-                      "description": {"type": "STRING", "description": "Mô tả ngắn gọn yêu cầu cần đạt được"}
+                      "name": {"type": "STRING", "description": "Tên task (vd: Task 1: Thiết kế & Đánh giá Agentic Fit)"},
+                      "description": {"type": "STRING", "description": "Mô tả chi tiết (3-5 câu): cần làm gì, output là gì"},
+                      "checklist": {"type": "ARRAY", "items": {"type": "STRING"}, "description": "Checklist cụ thể cho task này (3-6 items)"},
+                      "deliverable": {"type": "STRING", "description": "Deliverable/sản phẩm cần nộp"},
+                      "estimated_minutes": {"type": "NUMBER", "description": "Thời gian ước tính (phút)"}
                     },
-                    "required": ["name", "description"]
+                    "required": ["name", "description", "checklist"]
                   }
                 },
-                "grading_rubrics": {"type": "STRING", "description": "Các tiêu chí đánh giá / chấm điểm hoặc cách thức nghiệm thu"},
+                "grading_rubrics": {"type": "STRING", "description": "Tiêu chí chấm điểm + trọng số từng phần"},
                 "common_pitfalls": {
                   "type": "ARRAY",
-                  "items": {"type": "STRING", "description": "Bẫy lỗi hoặc kịch bản rủi ro sinh viên hay mắc phải"}
+                  "items": {"type": "STRING", "description": "Bẫy lỗi cụ thể (kèm hậu quả + cách tránh)"}
+                },
+                "file_summaries": {
+                  "type": "ARRAY",
+                  "items": {
+                    "type": "OBJECT",
+                    "properties": {
+                      "file": {"type": "STRING", "description": "Tên file"},
+                      "summary": {"type": "STRING", "description": "Tóm tắt nội dung file này (2-3 câu)"}
+                    },
+                    "required": ["file", "summary"]
+                  },
+                  "description": "Tóm tắt từng file .md trong repo"
                 }
             },
             "required": ["lab_objective", "setup_instructions", "tasks", "grading_rubrics", "common_pitfalls"]
@@ -124,33 +150,49 @@ class LabInsightExtractor:
         schema = {
             "type": "object",
             "properties": {
-                "lab_objective": {"type": "string", "description": "Tóm tắt mục tiêu cốt lõi của bài Lab"},
-                "setup_instructions": {"type": "string", "description": "Các bước chuẩn bị & cài đặt môi trường cần thiết"},
+                "lab_objective": {"type": "string", "description": "Mục tiêu + context đầy đủ (3-5 câu)"},
+                "timeline": {"type": "string", "description": "Timeline/lịch trình (thời lượng, các mốc checkpoint)"},
+                "setup_instructions": {"type": "string", "description": "Từng bước cài đặt: clone, venv, pip install, .env, smoke test"},
                 "tasks": {
                   "type": "array",
                   "items": {
                     "type": "object",
                     "properties": {
-                      "name": {"type": "string", "description": "Tên hoặc ID của Task (ví dụ: Task 1, CP1)"},
-                      "description": {"type": "string", "description": "Mô tả ngắn gọn yêu cầu cần đạt được"}
+                      "name": {"type": "string", "description": "Tên task (vd: Task 1: Thiết kế & Đánh giá Agentic Fit)"},
+                      "description": {"type": "string", "description": "Mô tả chi tiết (3-5 câu)"},
+                      "checklist": {"type": "array", "items": {"type": "string"}, "description": "Checklist cụ thể (3-6 items)"},
+                      "deliverable": {"type": "string", "description": "Deliverable cần nộp"},
+                      "estimated_minutes": {"type": "number", "description": "Thời gian ước tính (phút)"}
                     },
-                    "required": ["name", "description"],
+                    "required": ["name", "description", "checklist"],
                     "additionalProperties": False
                   }
                 },
-                "grading_rubrics": {"type": "string", "description": "Các tiêu chí đánh giá / chấm điểm hoặc cách thức nghiệm thu"},
+                "grading_rubrics": {"type": "string", "description": "Tiêu chí chấm điểm + trọng số"},
                 "common_pitfalls": {
                   "type": "array",
-                  "items": {"type": "string", "description": "Bẫy lỗi hoặc kịch bản rủi ro sinh viên hay mắc phải"}
+                  "items": {"type": "string", "description": "Bẫy lỗi cụ thể + cách tránh"}
+                },
+                "file_summaries": {
+                  "type": "array",
+                  "items": {
+                    "type": "object",
+                    "properties": {
+                      "file": {"type": "string"},
+                      "summary": {"type": "string", "description": "Tóm tắt 2-3 câu nội dung file này"}
+                    },
+                    "required": ["file", "summary"],
+                    "additionalProperties": False
+                  }
                 }
             },
             "required": ["lab_objective", "setup_instructions", "tasks", "grading_rubrics", "common_pitfalls"],
             "additionalProperties": False
         }
-        
+
         prompt = (
-            "Bạn là một chuyên gia phân tích bài toán thực hành AI cho sinh viên.\n"
-            "Hãy phân tích tài liệu bài Lab dưới đây và trích xuất ra thông tin tri thức có cấu trúc:\n\n"
+            "Bạn là chuyên gia phân tích bài lab cho sinh viên.\n"
+            "Phân tích TẤT CẢ file .md dưới đây và trích xuất thông tin CHI TIẾT (không tóm tắt quá mức):\n\n"
             f"{content[:20000]}"
         )
         
@@ -171,65 +213,193 @@ class LabInsightExtractor:
         return json.loads(response.choices[0].message.content)
 
     def _extract_via_regex(self, documents: List[Dict[str, Any]]) -> Dict[str, Any]:
-        """Tự động gom nhóm thông tin bằng Regex/Keywords khi không có API key."""
+        """Regex/Keywords fallback — cố gắng extract chi tiết nhất có thể."""
         objective_parts = []
         setup_parts = []
         tasks_list = []
         rubric_parts = []
         pitfalls = []
+        timeline_parts = []
+        file_summaries = []
 
-        # Các keyword để phân loại các section
-        kw_objective = ["mục tiêu", "objective", "bối cảnh", "giới thiệu", "de-bai", "đề bài"]
-        kw_setup = ["cài đặt", "setup", "chuẩn bị", "prerequisite", "install"]
-        kw_tasks = ["task", "bước", "yêu cầu", "checkpoint", "cp", "nhiệm vụ"]
-        kw_rubrics = ["rubric", "chấm điểm", "nghiệm thu", "tiêu chí", "đánh giá"]
-        kw_pitfalls = ["lưu ý", "chú ý", "bẫy", "pitfall", "rủi ro", "chỗ khó"]
+        kw_objective = ["mục tiêu", "objective", "bối cảnh", "giới thiệu", "đề bài", "de-bai", "lời nói đầu", "lý thuyết", "tổng quan"]
+        kw_setup     = ["cài đặt", "setup", "chuẩn bị", "prerequisite", "install", "môi trường", "cấu trúc thư mục"]
+        kw_tasks     = [
+            "task", "bước", "yêu cầu", "checkpoint", "cp", "nhiệm vụ", "mốc",
+            "thiết kế", "xây dựng", "implement", "build", "lắp", "lắp ráp",
+            "agent", "tool", "prototype", "phase", "giai đoạn", "thực hành",
+            "setup", "evaluation", "baseline", "code", "chatbot", "prompt",
+            "failed trace", "test tool", "react",
+        ]
+        kw_rubrics   = ["rubric", "chấm", "nghiệm thu", "tiêu chí", "đánh giá", "scoring", "bảng chấm", "so sánh"]
+        kw_pitfalls  = ["lưu ý", "chú ý", "bẫy", "pitfall", "rủi ro", "chỗ khó", "cảnh báo", "bảo mật", "ghi nhớ"]
+        kw_timeline  = ["thời gian", "phút", "giờ", "timeline", "lịch trình", "lộ trình", "kịch bản thời gian", "tiến độ"]
+
+        def _clean_heading(text: str) -> str:
+            """Làm sạch heading: bỏ emoji, số thứ tự '1. ', ký tự đặc biệt đầu dòng."""
+            import re
+            # Bỏ emoji/icon đầu dòng (kí tự có codepoint > 0x1F000)
+            parts = text.strip().split(None, 1)
+            if parts:
+                first_word = parts[0]
+                if any(ord(c) > 0x1F000 for c in first_word) or all(not c.isalnum() for c in first_word):
+                    text = parts[1] if len(parts) > 1 else ''
+                    parts = text.strip().split(None, 1)
+                    if parts:
+                        text = parts[0] + (' ' + parts[1] if len(parts) > 1 else '')
+            # Bỏ số thứ tự kiểu "1. ", "2) "
+            text = re.sub(r'^\d+[\.\)]\s*', '', text.strip())
+            # Bỏ số La Mã ở đầu
+            text = re.sub(r'^[IVX]+[\.\)]\s*', '', text)
+            # Bỏ dash/pipe
+            text = text.lstrip('—-|: ').strip()
+            return text
+
+        def _extract_bullets(content: str) -> list:
+            items = []
+            for line in content.split("\n"):
+                s = line.strip()
+                if s.startswith(("- ", "* ", "+ ")):
+                    items.append(s[2:].strip())
+                elif s and s[0].isdigit() and ". " in s[:4]:
+                    items.append(s[s.index(". ")+2:].strip())
+            return items[:8]
+
+        def _extract_mermaid_title(content: str) -> str:
+            """Trích xuất title từ mermaid block để dùng làm timeline text."""
+            import re
+            # Tìm "title ..." trong mermaid block
+            m = re.search(r'title\s+(.+)', content)
+            if m:
+                return m.group(1).strip()
+            # Tìm dòng không phải code trong mermaid
+            for line in content.split('\n'):
+                s = line.strip()
+                if s and not s.startswith('`') and not s.startswith('%%') and s != 'timeline' and len(s) > 10:
+                    return s
+            return content[:200]
 
         for doc in documents:
-            for section in doc.get("sections", []):
+            fn = doc.get("file_name", doc.get("relative_path", "unknown"))
+
+            # File summary: từ heading đầu tiên + content preview
+            sections = doc.get("sections", [])
+            if sections:
+                first_heading = sections[0]["heading"] if sections else fn
+                first_content = sections[0]["content"][:200] if sections and sections[0].get("content") else ""
+                file_summaries.append({
+                    "file": fn,
+                    "summary": f"{first_heading}: {first_content[:150]}..."
+                })
+
+            # Gom sections theo level-2: mỗi level-2 heading hấp thụ content của level-3+ sections sau nó
+            merged_l2 = {}  # heading -> {"content": str, "level": int}
+            for i, section in enumerate(sections):
+                if section.get("level", 2) == 2:
+                    merged_l2[i] = {"heading": section["heading"], "content": section.get("content", ""), "level": 2}
+                    # Merge content từ các level-3+ sections tiếp theo cho đến level-2 tiếp theo
+                    combined_content = section.get("content", "")
+                    for j in range(i + 1, len(sections)):
+                        if sections[j].get("level", 2) <= 2:
+                            break
+                        sub_content = sections[j].get("content", "")
+                        if sub_content.strip():
+                            combined_content += "\n" + sub_content.strip()
+                    merged_l2[i]["combined"] = combined_content
+
+            for idx, section in enumerate(sections):
                 heading = section["heading"].lower()
-                content = section["content"].strip()
-                
-                if not content:
+                raw_content = section["content"].strip()
+                if not raw_content:
                     continue
 
-                # 1. Phân tích Mục tiêu
-                if any(k in heading for k in kw_objective):
-                    objective_parts.append(f"- From {doc['file_name']} ({section['heading']}): {content[:300]}...")
-                
-                # 2. Phân tích Cài đặt
-                elif any(k in heading for k in kw_setup):
-                    setup_parts.append(content)
-                
-                # 3. Phân tích Rubrics
-                elif any(k in heading for k in kw_rubrics):
-                    rubric_parts.append(content)
-                
-                # 4. Phân tích Bẫy lỗi
-                elif any(k in heading for k in kw_pitfalls):
-                    pitfalls.append(f"Trong {doc['file_name']} -> {section['heading']}: {content[:200]}...")
-                
-                # 5. Phân tích Tasks
-                elif any(k in heading for k in kw_tasks):
-                    tasks_list.append({
-                        "name": section["heading"],
-                        "description": content[:300] + "..." if len(content) > 300 else content
-                    })
+                # Xử lý mermaid content cho timeline
+                content_clean = raw_content
+                if 'mermaid' in raw_content[:50] or '```' in raw_content[:50]:
+                    content_clean = _extract_mermaid_title(raw_content)
 
-        # Xây dựng các giá trị mặc định nếu rỗng
-        lab_objective = "\n".join(objective_parts) or "Không tìm thấy thông tin mục tiêu bài toán cụ thể."
-        setup_instructions = "\n".join(setup_parts[:2]) or "Không có hướng dẫn cài đặt đặc biệt."
-        grading_rubrics = "\n".join(rubric_parts[:2]) or "Không tìm thấy tiêu chí chấm điểm rõ ràng."
-        
+                # Dùng combined_content nếu section là level-2 (đã gom từ sub-sections)
+                if section.get("level", 2) == 2 and idx in merged_l2:
+                    combined_content = merged_l2[idx].get("combined", raw_content)
+                else:
+                    combined_content = raw_content
+
+                if any(k in heading for k in kw_objective):
+                    objective_parts.append(combined_content[:500])
+                elif any(k in heading for k in kw_setup):
+                    setup_parts.append(combined_content[:600])
+                elif any(k in heading for k in kw_rubrics):
+                    rubric_parts.append(combined_content[:600])
+                elif any(k in heading for k in kw_timeline):
+                    timeline_text = content_clean if content_clean != raw_content else combined_content
+                    timeline_parts.append(timeline_text[:300])
+                elif any(k in heading for k in kw_pitfalls):
+                    pitfalls.append(f"[{fn}] {section['heading']}: {combined_content[:200]}")
+                elif any(k in heading for k in kw_tasks):
+                    if section.get("level", 2) == 2:
+                        checklist = _extract_bullets(combined_content)
+                        clean_name = _clean_heading(section["heading"])
+                        if len(clean_name) >= 5:
+                            tasks_list.append({
+                                "name": clean_name or section["heading"],
+                                "description": combined_content[:400],
+                                "checklist": checklist if checklist else _extract_bullets(combined_content[:800]),
+                                "deliverable": "",
+                                "estimated_minutes": None
+                            })
+
+        # Merge & build output
+        lab_objective = "\n\n".join(objective_parts[:3]) or "Xem chi tiết trong tài liệu đính kèm."
+        setup_instructions = "\n\n".join(setup_parts[:2]) or "Làm theo hướng dẫn trong README.md."
+        grading_rubrics = "\n\n".join(rubric_parts[:2]) or "Xem rubric trong tài liệu."
+        timeline = "\n".join(timeline_parts[:2]) or ""
+
         if not tasks_list:
-            tasks_list = [{"name": "Tổng quát", "description": "Làm theo tài liệu hướng dẫn."}]
+            # Fallback: tạo tasks từ H2 sections, LOẠI bỏ rubric/objective/timeline/pitfalls
+            skip_kw = kw_rubrics + kw_objective + kw_timeline + kw_pitfalls + ["cấu trúc", "danh sách", "phân công"]
+            # Ưu tiên sections từ file hướng dẫn chính (CODELAB, guide) — không lấy từ reference docs
+            prefer_files = ["codelab", "guide", "readme"]
+            secondary_files = ["phan_cong", "danh_sach", "de_tai", "trace", "eval"]
+            h2_sections = []
+            for doc in documents:
+                fn = doc.get("file_name", doc.get("relative_path", "")).lower()
+                for sec in doc.get("sections", []):
+                    if sec.get("level") != 2:
+                        continue
+                    h = sec.get("heading", "").lower()
+                    if any(k in h for k in skip_kw):
+                        continue
+                    # Skip nếu là reference doc không có nội dung task
+                    if any(rf in fn for rf in secondary_files):
+                        continue
+                    h2_sections.append((sec, fn))
+            # Ưu tiên sections từ file chính (codelab, guide)
+            h2_sections.sort(key=lambda x: not any(pf in x[1] for pf in prefer_files))
+            for sec, fn in h2_sections:
+                    clean_name = _clean_heading(sec["heading"])
+                    bullets = _extract_bullets(sec.get("content", ""))
+                    tasks_list.append({
+                        "name": clean_name or sec["heading"],
+                        "description": sec.get("content", "")[:300],
+                        "checklist": bullets if bullets else [clean_name],
+                        "deliverable": "",
+                        "estimated_minutes": None
+                    })
+            if not tasks_list:
+                tasks_list = [{"name": "Hoàn thành bài lab", "description": "Làm theo hướng dẫn trong tài liệu.",
+                               "checklist": ["Đọc kỹ tài liệu", "Làm theo từng bước", "Nộp bài đúng hạn"],
+                               "deliverable": "", "estimated_minutes": None}]
+
         if not pitfalls:
-            pitfalls = ["Hãy cẩn thận tránh ảo giác (hallucination) khi lập trình AI Agent."]
+            pitfalls = ["Kiểm tra kỹ file .env trước khi chạy.", "Không commit API key lên GitHub.",
+                        "Đọc kỹ rubric để không bỏ sót tiêu chí chấm điểm."]
 
         return {
             "lab_objective": lab_objective,
+            "timeline": timeline,
             "setup_instructions": setup_instructions,
             "tasks": tasks_list,
             "grading_rubrics": grading_rubrics,
-            "common_pitfalls": pitfalls
+            "common_pitfalls": pitfalls,
+            "file_summaries": file_summaries,
         }

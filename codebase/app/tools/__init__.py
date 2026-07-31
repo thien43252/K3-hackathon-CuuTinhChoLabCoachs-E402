@@ -8,9 +8,7 @@ from app.tools.knowledge_tools import (
 )
 
 from app.tools.platform_tools import (
-    get_user_context,
     create_group_room,
-    GetUserContextInput,
     CreateGroupRoomInput,
 )
 
@@ -19,6 +17,7 @@ from app.tools.task_tools import (
     get_group_plan,
     track_group_progress,
     update_group_progress,
+    list_members,
     GenerateGroupPlanInput,
     GetGroupPlanInput,
     TrackGroupProgressInput,
@@ -35,7 +34,6 @@ ALL_TOOLS = {
     "get_lab_content": get_lab_content,
 
     # Platform & Context Tools
-    "get_user_context": get_user_context,
     "create_group_room": create_group_room,
 
     # Task Management Tools
@@ -43,6 +41,7 @@ ALL_TOOLS = {
     "get_group_plan": get_group_plan,
     "track_group_progress": track_group_progress,
     "update_group_progress": update_group_progress,
+    "list_members": list_members,
 
     # Troubleshooting Tools
     "analyze_student_issue": analyze_student_issue,
@@ -74,12 +73,12 @@ def to_openai_tools(declarations: list) -> list:
 
 __all__ = [
     "get_lab_content",
-    "get_user_context",
     "create_group_room",
     "generate_group_plan",
     "get_group_plan",
     "track_group_progress",
     "update_group_progress",
+    "list_members",
     "analyze_student_issue",
     "ALL_TOOLS",
     "TOOL_FUNCTIONS",

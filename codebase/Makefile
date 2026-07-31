@@ -4,9 +4,13 @@
 run:
 	uv run main.py
 
-# Chạy toàn bộ các test cases với pytest
+# Chạy toàn bộ test cases (8 tool tests + insight extractor + git service)
 test:
-	PYTHONPATH=. uv run pytest -v
+	PYTHONPATH=. uv run pytest tests/ -v --tb=short
+
+# Chạy nhanh chỉ tool tests (bỏ qua git service cần network)
+test-tools:
+	PYTHONPATH=. uv run pytest tests/test_tools_pytest.py -v --tb=short
 
 # Cài đặt môi trường và các package cần thiết
 install:

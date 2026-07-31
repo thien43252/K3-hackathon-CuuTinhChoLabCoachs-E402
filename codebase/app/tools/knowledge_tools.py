@@ -4,53 +4,114 @@ Bao gồm:
 1. get_lab_content
 """
 
-from typing import Any, Dict, Optional
+from typing import Any, Dict, List, Optional
 from app.services.repo_service import LabContentService
 
 # Singleton service
 _LAB_SERVICE = LabContentService()
 
+# Keywords phát hiện sections quan trọng
+_IMPORTANT_KW = [
+    "yêu cầu", "requirement", "checklist", "rubric", "chấm", "nghiệm thu",
+    "hướng dẫn", "guide", "cài đặt", "setup", "install", "prerequisite",
+    "lưu ý", "note", "pitfall", "bẫy", "cảnh báo", "warning",
+    "nộp", "submit", "deadline", "timeline", "lịch trình",
+    "tool", "function", "api", "spec", "schema",
+]
+
 
 def get_lab_content(lab_id: str) -> Dict[str, Any]:
     """
     1. get_lab_content
-    Mô tả: Lấy nội dung bài lab đã được Admin phân tích từ cache.
-    Trả về mục tiêu, danh sách task, tiêu chí đánh giá, bẫy lỗi,
-    và danh sách tài liệu .md của bài lab.
-    Dùng sau khi đã biết lab_id từ get_user_context.
+    Trả về TOÀN BỘ nội dung lab từ cache: insights + documents + code + key sections.
+    Dùng context này để trả lời learner CHI TIẾT, không bỏ sót file .md nào.
     """
     try:
         if not lab_id or not lab_id.strip():
-            return {
-                "status": "empty",
-                "error_code": "INVALID_INPUT",
-                "message": "lab_id không được để trống."
-            }
+            return {"status": "empty", "error_code": "INVALID_INPUT",
+                    "message": "lab_id không được để trống."}
 
         data = _LAB_SERVICE.get_lab_data(lab_id)
         if not data:
-            return {
-                "status": "empty",
-                "error_code": "NO_CACHED_DATA",
-                "message": f"Không tìm thấy nội dung cho lab '{lab_id}'. Hãy nhờ Admin đăng ký lab trước."
-            }
+            return {"status": "empty", "error_code": "NO_CACHED_DATA",
+                    "message": f"Không tìm thấy nội dung lab '{lab_id}'. Admin cần /admin-add-lab trước."}
 
-        insights = data.get("insights", {})
+        insights  = data.get("insights", {})
+        documents = data.get("documents", [])
+        sitemap   = data.get("sitemap", [])
+
+        # ── 1. Insights ──
+        lab_objective      = insights.get("lab_objective", "")
+        setup_instructions = insights.get("setup_instructions", "")
+        grading_rubrics    = insights.get("grading_rubrics", "")
+        common_pitfalls    = insights.get("common_pitfalls", [])
+        draft_tasks        = insights.get("tasks", [])
+        timeline           = insights.get("timeline", "")
+        file_summaries     = insights.get("file_summaries", [])
+
+        # ── 2. Documents summary ──
+        docs_list = []
+        for doc in documents:
+            sections = []
+            for sec in doc.get("sections", [])[:10]:
+                sections.append({
+                    "heading": sec.get("heading", ""),
+                    "level": sec.get("level", 2),
+                    "content": sec.get("content", "")[:300],
+                })
+            docs_list.append({
+                "file": doc.get("relative_path", ""),
+                "title": doc.get("title", ""),
+                "section_count": len(doc.get("sections", [])),
+                "sections": sections,
+            })
+
+        # ── 3. Code examples (top 8) ──
+        code_examples = []
+        for doc in documents:
+            for cb in doc.get("code_blocks", []):
+                code = cb.get("code", "").strip()
+                if len(code) > 15 and len(code_examples) < 8:
+                    code_examples.append({
+                        "file": doc.get("relative_path", ""),
+                        "language": cb.get("language", "text"),
+                        "code": code[:500],
+                    })
+
+        # ── 4. Key sections ──
+        key_sections = []
+        for doc in documents:
+            for sec in doc.get("sections", []):
+                h = sec.get("heading", "").lower()
+                if any(kw in h for kw in _IMPORTANT_KW):
+                    key_sections.append({
+                        "file": doc.get("relative_path", ""),
+                        "heading": sec.get("heading", ""),
+                        "content": sec.get("content", "")[:500],
+                    })
+
+        # ── 5. Sitemap ──
+        sitemap_detail = [{"file": s.get("relative_path", ""), "title": s.get("title", "")}
+                          for s in sitemap[:15]]
+
         return {
             "status": "success",
             "lab_id": lab_id,
-            "lab_objective": insights.get("lab_objective", ""),
-            "setup_instructions": insights.get("setup_instructions", ""),
-            "tasks": insights.get("tasks", []),
-            "grading_rubrics": insights.get("grading_rubrics", ""),
-            "common_pitfalls": insights.get("common_pitfalls", []),
+            # Insights
+            "lab_objective": lab_objective,
+            "timeline": timeline,
+            "setup_instructions": setup_instructions,
+            "tasks": draft_tasks,
+            "grading_rubrics": grading_rubrics,
+            "common_pitfalls": common_pitfalls,
+            "file_summaries": file_summaries,
+            # Documents
             "total_documents": data.get("total_documents", 0),
-            "sitemap": data.get("sitemap", []),
-            "message": f"Đã tìm thấy dữ liệu cho lab '{lab_id}'."
+            "sitemap": sitemap_detail,
+            "documents": docs_list,
+            "code_examples": code_examples,
+            "key_sections": key_sections,
         }
     except Exception as e:
-        return {
-            "status": "error",
-            "error_code": "CONTENT_LOOKUP_FAILED",
-            "message": f"Không thể truy xuất nội dung lab: {str(e)}"
-        }
+        return {"status": "error", "error_code": "CONTENT_LOOKUP_FAILED",
+                "message": f"Không thể truy xuất nội dung lab: {e}"}
