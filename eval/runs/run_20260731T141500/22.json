@@ -1,0 +1,17 @@
+{
+  "case_id": "22",
+  "title": "Gửi tin nhắn liên tiếp spam bot",
+  "input": "hello\nhi\nbot ơi\nalo\ncó ai không",
+  "context": {
+    "user_id": "U_STU1",
+    "channel_type": "general",
+    "group_id": null,
+    "lab_id": "3",
+    "members": []
+  },
+  "applies": "Hữu ích",
+  "status": "answered",
+  "assistant_text": "Chào bạn! Mình ở đây để hỗ trợ bạn với bài lab hôm nay. Bạn cần giúp gì?",
+  "tool_events": [],
+  "rounds": 1
+}

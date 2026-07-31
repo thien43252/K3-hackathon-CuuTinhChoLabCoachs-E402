@@ -1,0 +1,51 @@
+{
+  "case_id": "09",
+  "title": "Học viên báo lỗi code có log đầy đủ",
+  "input": "Em bị lỗi khi chạy server, đây là log: `ModuleNotFoundError: No module named 'fastapi'`. Em đang làm task T2",
+  "context": {
+    "user_id": "U_MEM1",
+    "channel_type": "group_room",
+    "group_id": "EVAL_GROUP_A",
+    "lab_id": "3",
+    "members": [
+      {
+        "id": "U_LEADER",
+        "name": "Leader"
+      },
+      {
+        "id": "U_MEM1",
+        "name": "Mem1"
+      },
+      {
+        "id": "U_MEM2",
+        "name": "Mem2"
+      },
+      {
+        "id": "U_MEM3",
+        "name": "Mem3"
+      }
+    ]
+  },
+  "applies": "Đúng có căn cứ · Đúng workflow",
+  "status": "answered",
+  "assistant_text": "Lỗi của bạn là do chưa cài đặt thư viện phụ thuộc trong file `requirements.txt`. Để khắc phục, bạn hãy chạy lệnh sau trong Terminal:\n\n```\npip install -r requirements.txt\n```\n\nHoặc bạn có thể sử dụng lệnh:\n\n```\nuv sync\n```\n\nNếu cần thêm thông tin, bạn có thể tham khảo tài liệu [tại đây](https://docs.example.com/python-deps).",
+  "tool_events": [
+    {
+      "tool": "analyze_student_issue",
+      "args": {
+        "task_id": "T2",
+        "issue_description": "Em bị lỗi khi chạy server, không tìm thấy module 'fastapi'.",
+        "error_log": "ModuleNotFoundError: No module named 'fastapi'"
+      },
+      "result": {
+        "status": "success",
+        "root_cause": "Chưa cài đặt thư viện phụ thuộc trong requirements.txt",
+        "suggested_solution": "Chạy lệnh `pip install -r requirements.txt` hoặc `uv sync` trong Terminal.",
+        "reference_links": [
+          "https://docs.example.com/python-deps"
+        ]
+      }
+    }
+  ],
+  "rounds": 2
+}
