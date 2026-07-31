@@ -477,10 +477,12 @@ class TestListMembers:
         assert res.get("error_code") == "NO_CONTEXT"
 
     def test_u2_empty_members(self):
-        """T8_U2: Group room nhưng members rỗng → NO_CONTEXT."""
+        """T8_U2: Group room nhưng members rỗng → success (danh sách rỗng)."""
         discord_context.set_context(group_id="G01", members=[])
         res = list_members()
-        assert res.get("error_code") == "NO_CONTEXT"
+        assert res["status"] == "success"
+        assert res.get("total") == 0
+        assert res.get("members") == []
         discord_context.clear_context()
 
 

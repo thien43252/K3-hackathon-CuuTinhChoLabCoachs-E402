@@ -114,38 +114,46 @@ async def on_message(message):
         channel_type = "general"
         group_id = None
         members_info = []
+        room = None
         try:
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute("SELECT * FROM rooms WHERE discord_channel_id = ?", (str(message.channel.id),))
             room = cursor.fetchone()
-            if room:
-                channel_type = "group_room"
-                group_id = room["room_name"]
-                # Resolve members (ID + display name) để agent có thể identify ai là ai dù không @mention
-                member_ids = json.loads(room["added_members"]) if room.get("added_members") else []
-                for mid in member_ids:
-                    try:
-                        member = message.guild.get_member(int(mid))
-                        if member:
-                            members_info.append({"id": str(member.id), "name": member.display_name})
-                        else:
-                            members_info.append({"id": mid, "name": mid})
-                    except (ValueError, TypeError):
-                        members_info.append({"id": mid, "name": mid})
             conn.close()
         except Exception:
             pass
 
-        # Resolve lab_id từ lab_materials theo ngày hôm nay
+        if room:
+            channel_type = "group_room"
+            group_id = room["room_name"]
+            # Resolve members (ID + display name)
+            member_ids = []
+            try:
+                raw_members = room["added_members"]
+                member_ids = json.loads(raw_members) if raw_members else []
+            except (json.JSONDecodeError, TypeError):
+                member_ids = []
+            for mid in member_ids:
+                try:
+                    member = message.guild.get_member(int(mid))
+                    if member:
+                        members_info.append({"id": str(member.id), "name": member.display_name})
+                    else:
+                        members_info.append({"id": mid, "name": mid})
+                except (ValueError, TypeError, AttributeError):
+                    members_info.append({"id": mid, "name": mid})
+
+        # Resolve lab_id từ lab_materials — dùng local date (không UTC)
         lab_id = None
         try:
-            today_str = datetime.now(timezone.utc).strftime("%Y-%m-%d")
+            from datetime import date as dt_date
+            today_local = dt_date.today().isoformat()
             conn = get_db_connection()
             cursor = conn.cursor()
             cursor.execute(
                 "SELECT lab_id FROM lab_materials WHERE lab_date <= ? ORDER BY lab_date DESC LIMIT 1",
-                (today_str,)
+                (today_local,)
             )
             row = cursor.fetchone()
             if row:

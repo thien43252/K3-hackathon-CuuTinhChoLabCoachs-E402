@@ -20,16 +20,23 @@ _IMPORTANT_KW = [
 ]
 
 
-def get_lab_content(lab_id: str) -> Dict[str, Any]:
+def get_lab_content(lab_id: str = "") -> Dict[str, Any]:
     """
     1. get_lab_content
     Trả về TOÀN BỘ nội dung lab từ cache: insights + documents + code + key sections.
+    Nếu lab_id để trống, tự động resolve từ Discord context (lab hôm nay).
     Dùng context này để trả lời learner CHI TIẾT, không bỏ sót file .md nào.
     """
     try:
         if not lab_id or not lab_id.strip():
-            return {"status": "empty", "error_code": "INVALID_INPUT",
-                    "message": "lab_id không được để trống."}
+            # Auto-resolve từ Discord context
+            from app import discord_context
+            ctx = discord_context.get()
+            if ctx and ctx.lab_id:
+                lab_id = ctx.lab_id
+            else:
+                return {"status": "empty", "error_code": "INVALID_INPUT",
+                        "message": "lab_id không được để trống và không có lab trong context hôm nay."}
 
         data = _LAB_SERVICE.get_lab_data(lab_id)
         if not data:

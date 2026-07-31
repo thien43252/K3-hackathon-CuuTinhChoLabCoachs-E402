@@ -114,6 +114,515 @@ def _gen_custom_task_id(existing: list, phase_ids: set) -> str:
 
 
 # ═══════════════════════════════════════════════════════════════
+# DEEP PLANNING — Divide & Conquer (Sequential, pure Python)
+# Kiến trúc NODE PIPELINE chạy inline — không cần LangGraph/n8n
+# NODE 0 → 1 → 2 → 3 → 4 trong 1 function call
+# ═══════════════════════════════════════════════════════════════
+
+# ── NODE 1 data: Subtask templates per phase_type + task_type ──────────────
+_DEEP_SUBTASK_TEMPLATES: dict = {
+    # key = (phase_type, canonical_role)
+    # value = list of subtask dicts
+    ("design", "ai"): [
+        {
+            "sid": ".1", "priority": "P0",
+            "title": "Đọc tài liệu & điền Scoring Matrix",
+            "why": "Chứng minh bài toán CẦN Agent, không chỉ Chatbot — đây là nền tảng tư duy cho toàn bộ lab",
+            "how": [
+                "Mở `docs/trace_eval.md`, tìm section Scoring Matrix",
+                "Đọc README.md mục '4 Cấp Độ AI' — ghi chú tiêu chí Chatbot vs Agent",
+                "Chấm 4 tiêu chí Agentic Fit (1–5đ mỗi tiêu chí): External Data, Multi-step, Actions, Unpredictable Input",
+                "Điền bảng kèm giải thích 1 dòng cho mỗi điểm — tổng ≥12/20 mới đủ điều kiện Agent",
+            ],
+            "input_needed": "Quyết định chủ đề bài toán nhóm",
+            "output_artifact": "Section Scoring Matrix trong `docs/trace_eval.md` điền đủ",
+            "dod": "4 tiêu chí có điểm + giải thích, tổng điểm ghi rõ, file `git add` xong",
+            "antipattern": "Chấm theo cảm tính — mỗi điểm PHẢI có câu giải thích từ bài toán nhóm",
+            "estimated_minutes": 10,
+        },
+        {
+            "sid": ".2", "priority": "P0",
+            "title": "Viết bảng so sánh Chatbot vs ReAct Agent",
+            "why": "Tạo 'north star' tư duy — hiểu TẠI SAO cần Agent trước khi code",
+            "how": [
+                "Tạo bảng 3 cột trong trace_eval.md: Câu hỏi / Chatbot xử lý được không / Agent xử lý thế nào",
+                "Điền 5 test case vào bảng",
+                "Với mỗi case: predict Chatbot output (hallucination risk?) và expected Agent trace",
+                "Highlight ≥2 câu Chatbot sẽ hallucinate — đây là bằng chứng cần Agent",
+            ],
+            "input_needed": "5 test cases từ teammate",
+            "output_artifact": "Bảng 'Chatbot vs Agent Analysis' trong trace_eval.md",
+            "dod": "5 rows đầy đủ, classify output: correct/hallucinated/safe-fallback",
+            "antipattern": "Dùng câu hỏi lý thuyết thuần — phải có ≥3 câu cần Tool/data thực tế",
+            "estimated_minutes": 10,
+        },
+        {
+            "sid": ".3", "priority": "P1",
+            "title": "Phân tích Failure Modes của tools",
+            "why": "Phòng thủ trước — biết tool fail ở đâu giúp code error handling tốt hơn",
+            "how": [
+                "Dựa trên tool list đã chọn, liệt kê failure mode cho mỗi tool",
+                "Phân loại: Input Error / Logic Error / Edge Case",
+                "Viết expected error string mà tool nên return thay vì crash",
+                "Document vào docs/trace_eval.md section 'Failure Mode Analysis'",
+            ],
+            "input_needed": "Tool list từ teammate",
+            "output_artifact": "Bảng Failure Modes trong trace_eval.md",
+            "dod": "Mỗi tool có ≥2 failure mode với error string cụ thể",
+            "antipattern": "Chỉ viết 'lỗi nhập sai' — phải viết cụ thể: khi input='xyz' → tool return 'LỖI: ...' ",
+            "estimated_minutes": 10,
+        },
+        {
+            "sid": ".4", "priority": "P1",
+            "title": "Thiết kế Edge Case / câu bẫy",
+            "why": "Chuẩn bị 'đạn' để test Agent nhóm mình và tấn công nhóm khác ở Mốc 4",
+            "how": [
+                "Thiết kế ≥2 câu bẫy nhắm Guardrail (ép Agent lặp vô hạn nếu thiếu MAX_ITERATIONS)",
+                "Thiết kế ≥1 câu bẫy hallucination (Chatbot sẽ bịa đặt)",
+                "Thiết kế ≥1 câu Prompt Injection (cố ý thay đổi behavior Agent)",
+                "Thêm vào config/test_cases.json với type='edge_case'",
+            ],
+            "input_needed": "Hiểu tools đã được build (sau Mốc 2)",
+            "output_artifact": "≥4 edge cases trong `config/test_cases.json`",
+            "dod": "Mỗi edge case có: question + expected_agent_behavior + attack_vector_type",
+            "antipattern": "Edge case không phải câu hỏi khó — là câu được thiết kế để phá hệ thống",
+            "estimated_minutes": 10,
+        },
+    ],
+    ("build", "ai"): [
+        {
+            "sid": ".1", "priority": "P0",
+            "title": "Thiết kế Tool Contract (design-first)",
+            "why": "'Design trước, code sau' — xác định contract trước khi implement tránh rework",
+            "how": [
+                "Liệt kê 3–5 tools cần thiết cho chủ đề nhóm",
+                "Với mỗi tool, điền bảng 8 câu hỏi: Name, Purpose, Input, Output, Error, Side-effect, Example, Safety",
+                "Thêm docstring chuẩn cho từng hàm trong src/tools.py",
+                "Share danh sách tool với teammate để phân tích Failure Modes",
+            ],
+            "input_needed": "Quyết định chủ đề nhóm",
+            "output_artifact": "Bảng Tool Contract trong docs/trace_eval.md section 'Tool Specs'",
+            "dod": "≥3 tools, 8 trường đầy đủ, không trường nào để trống",
+            "antipattern": "Code tools.py ngay khi chưa có contract — thiết kế contract trước",
+            "estimated_minutes": 10,
+        },
+        {
+            "sid": ".2", "priority": "P0",
+            "title": "Implement src/tools.py với Error Handling",
+            "why": "Tools pass test độc lập trước khi gắn Agent — isolate lỗi từ nguồn",
+            "how": [
+                "Implement từng hàm tool theo contract đã thiết kế",
+                "Wrap try/except: lỗi return string 'LỖI: ...' KHÔNG raise Exception",
+                "Register tất cả vào `AVAILABLE_TOOLS = {'tool_name': function}`",
+                "Test thủ công từng tool với valid và invalid input",
+            ],
+            "input_needed": "Tool Contract đã thiết kế ở bước trước",
+            "output_artifact": "`src/tools.py` với AVAILABLE_TOOLS dict + docstrings",
+            "dod": "`AVAILABLE_TOOLS.keys()` in đúng tool names; mỗi tool với invalid input không crash",
+            "antipattern": "`raise Exception(...)` thay vì `return 'LỖI: ...'` — tool phải return string",
+            "estimated_minutes": 15,
+        },
+        {
+            "sid": ".3", "priority": "P0",
+            "title": "Viết CHATBOT_BASELINE_PROMPT",
+            "why": "Baseline CÔNG BẰNG — prompt không biết về tools để so sánh trung thực với Agent",
+            "how": [
+                "Tạo `CHATBOT_BASELINE_PROMPT` trong src/prompts.py — không đề cập tools",
+                "Implement `run_baseline_chatbot(question)` trong src/app.py: 1 LLM call",
+                "Chạy 5 test cases, verify tool_calls=0 tất cả",
+                "Share raw output với teammate để điền bảng so sánh",
+            ],
+            "input_needed": "Test cases từ config/test_cases.json",
+            "output_artifact": "`CHATBOT_BASELINE_PROMPT` trong prompts.py + `run_baseline_chatbot()` trong app.py",
+            "dod": "5 test cases chạy, tool_calls=0, kết quả ghi trong trace_eval.md",
+            "antipattern": "Nhúng kết quả tool vào system prompt của baseline — đó là gian lận baseline",
+            "estimated_minutes": 15,
+        },
+    ],
+    ("validate", "ai"): [
+        {
+            "sid": ".1", "priority": "P0",
+            "title": "Viết REACT_SYSTEM_PROMPT + Guardrails",
+            "why": "Prompt là 'luật chơi' — ép Agent suy luận đúng format, không tự bịa Observation",
+            "how": [
+                "Tạo `REACT_SYSTEM_PROMPT` trong src/prompts.py với khung bắt buộc: Thought/Action/Observation",
+                "Thêm rule: 'Chỉ Final Answer khi đã có Observation từ Tool thực tế'",
+                "Thêm `MAX_ITERATIONS = 5` + xử lý khi đạt giới hạn",
+                "Inject danh sách available tools vào prompt",
+                "Test với 1 câu mẫu, verify output có Thought/Action đúng format",
+            ],
+            "input_needed": "AVAILABLE_TOOLS từ src/tools.py đã implement xong",
+            "output_artifact": "`REACT_SYSTEM_PROMPT` + `MAX_ITERATIONS` trong src/prompts.py",
+            "dod": "LLM sinh đúng 'Thought: ...\nAction: ...' cho ≥3 test queries",
+            "antipattern": "LLM tự viết 'Observation:' — Application code phải điền, không phải LLM",
+            "estimated_minutes": 15,
+        },
+        {
+            "sid": ".2", "priority": "P0",
+            "title": "Implement ReAct Loop trong src/app.py",
+            "why": "Vòng lặp Thought→Action→Observation là trái tim Agent — phải chạy đúng logic",
+            "how": [
+                "Implement parser: extract tool_name + params từ 'Action: tool_name[params]'",
+                "Implement executor: lookup AVAILABLE_TOOLS, gọi tool, bắt exception",
+                "Implement loop: while iteration < MAX_ITERATIONS: [call LLM → parse → execute → append Observation]",
+                "Handle 'Final Answer': khi output chứa 'Final Answer:' → break loop",
+                "Handle MAX_ITERATIONS exceeded → return safe fallback message",
+            ],
+            "input_needed": "REACT_SYSTEM_PROMPT + AVAILABLE_TOOLS đã có",
+            "output_artifact": "Hàm `run_react_agent(question)` trong src/app.py",
+            "dod": "Multi-step → trace Thought→Action→Observation→Final; MAX_ITERATIONS ngắt đúng khi câu bẫy",
+            "antipattern": "Application không append Observation — LLM không được tự viết Observation",
+            "estimated_minutes": 20,
+        },
+        {
+            "sid": ".3", "priority": "P0",
+            "title": "Test 5 cases + fix Agent V1 → V2",
+            "why": "Phát hiện lỗi có bằng chứng — V2 phải có trace before/after rõ ràng",
+            "how": [
+                "Chạy tất cả 5 test cases, ghi lại trace",
+                "Cố tình trigger edge case — record failed trace",
+                "RCA (Root Cause Analysis): Lỗi ở Parser? Executor? Prompt? Loop?",
+                "Fix → Agent V2; chạy lại edge case, verify đã khắc phục",
+            ],
+            "input_needed": "Edge cases từ teammate + run_react_agent() đã implement",
+            "output_artifact": "Agent V2 code + Failed trace + Fixed trace trong docs/trace_eval.md",
+            "dod": "≥1 failed trace ghi kèm RCA; V2 pass edge case với safe fallback message",
+            "antipattern": "Xóa failed trace — bằng chứng lỗi + sửa = đủ điểm observability",
+            "estimated_minutes": 20,
+        },
+        {
+            "sid": ".4", "priority": "P1",
+            "title": "Ghi Trace Log + Bảng so sánh",
+            "why": "Báo cáo phải có số liệu định lượng, không chỉ mô tả",
+            "how": [
+                "Chép 5 trace logs vào docs/trace_eval.md (cả Chatbot và Agent)",
+                "Điền bảng rubric 0–2 điểm: 5 cases × 4 tiêu chí (Factual, Grounding, Tool selection, Termination)",
+                "Tính tổng điểm Chatbot vs Agent, viết nhận xét 3–5 câu",
+                "Share với teammate để vẽ Hybrid Flowchart",
+            ],
+            "input_needed": "Trace logs từ V2 test + Chatbot baseline output",
+            "output_artifact": "`docs/trace_eval.md` đủ: Scoring Matrix + Tool Specs + Failure Modes + 5 Traces + Comparison Table",
+            "dod": "trace_eval.md có đủ 5 sections, bảng rubric điền xong",
+            "antipattern": "Trace thô chưa đủ — phải annotate: đâu là Thought, Observation, lỗi",
+            "estimated_minutes": 15,
+        },
+    ],
+    ("demo", "ai"): [
+        {
+            "sid": ".1", "priority": "P0",
+            "title": "Chuẩn bị Attack Set tấn công liên nhóm",
+            "why": "Gây failed trace ở Agent nhóm khác — bằng chứng hiểu sâu về guardrails",
+            "how": [
+                "Chọn 3 edge cases mạnh nhất từ bộ đã thiết kế",
+                "Với mỗi câu: viết 'expected failure' (Agent nhóm kia fail thế nào nếu thiếu guardrail)",
+                "Ghi biên bản cross-audit khi test Agent nhóm khác",
+                "Điền section 'Cross-Audit Log' trong docs/trace_eval.md",
+            ],
+            "input_needed": "Edge cases đã thiết kế ở giai đoạn Design",
+            "output_artifact": "Cross-Audit Log trong trace_eval.md",
+            "dod": "3 câu tấn công ghi kết quả thực tế (pass/fail + trace path cụ thể)",
+            "antipattern": "Chỉ ghi 'fail' — phải ghi trace path cụ thể: Thought→Action→Observation của họ",
+            "estimated_minutes": 20,
+        },
+        {
+            "sid": ".2", "priority": "P0",
+            "title": "Vẽ Hybrid Decision Flowchart (Mermaid)",
+            "why": "Tổng hợp học tập thành sơ đồ quyết định — khi nào Chatbot, khi nào ReAct Agent",
+            "how": [
+                "Xác định 4–5 tiêu chí: cần tool không, multi-step không, latency OK không",
+                "Vẽ Mermaid flowchart: Chatbot path (fast/cheap) vs ReAct path (accurate/grounded)",
+                "Thêm decision diamond: 'Cần dữ liệu real-time?' → Yes → ReAct / No → Chatbot",
+                "Thêm cost annotation + save vào docs/hybrid_flowchart.mermaid",
+            ],
+            "input_needed": "Bảng so sánh Chatbot vs Agent + trace logs",
+            "output_artifact": "`docs/hybrid_flowchart.mermaid` render được",
+            "dod": "Render OK trên Mermaid Live Editor, ≥2 decision diamonds, 2 paths rõ",
+            "antipattern": "Flowchart phải có nhánh IF/ELSE — không phải sequence steps thẳng",
+            "estimated_minutes": 20,
+        },
+    ],
+}
+
+_RISK_BY_PHASE: dict = {
+    "design": [
+        {"risk": "Chấm Scoring Matrix theo cảm tính, thiếu giải thích cụ thể", "level": "MEDIUM",
+         "mitigation": "Mỗi điểm phải kèm 1 câu giải thích từ bài toán nhóm chọn"},
+    ],
+    "build": [
+        {"risk": "Tools.py raise Exception thay vì return string lỗi → Agent crash", "level": "HIGH",
+         "mitigation": "Wrap tất cả tool trong try/except, return 'LỖI: ...' thay vì raise"},
+        {"risk": "Nhúng kết quả tool vào Chatbot baseline → so sánh không công bằng", "level": "HIGH",
+         "mitigation": "Verify tool_calls=0 sau mỗi lần chạy baseline"},
+    ],
+    "validate": [
+        {"risk": "LLM tự viết Observation — hallucination vẫn xảy ra trong Agent", "level": "CRITICAL",
+         "mitigation": "Code review: nếu 'Observation:' xuất hiện trong LLM output → sai"},
+        {"risk": "Xóa failed trace vì xấu hổ → mất điểm observability", "level": "MEDIUM",
+         "mitigation": "Giữ nguyên failed trace + thêm RCA annotation bên cạnh"},
+    ],
+    "demo": [
+        {"risk": "Không có trace log cụ thể khi tấn công nhóm khác", "level": "MEDIUM",
+         "mitigation": "Ghi lại Thought→Action→Observation của Agent nhóm bạn khi bị tấn công"},
+    ],
+}
+
+_QUALITY_GATES_BY_PHASE: dict = {
+    "design":   "Scoring Matrix điền xong, bảng so sánh Chatbot vs Agent có ≥5 rows",
+    "build":    "AVAILABLE_TOOLS.keys() in đúng, `python -c 'from src.tools import AVAILABLE_TOOLS'` không lỗi; baseline tool_calls=0",
+    "validate": "Multi-step trace đúng chuỗi Thought→Action→Observation→Final; MAX_ITERATIONS ngắt khi câu bẫy; V2 safe fallback",
+    "demo":     "Hybrid Flowchart render OK trên Mermaid Live Editor; Cross-Audit Log có kết quả thực tế",
+}
+
+_RUBRIC_MAP: dict = {
+    "design":   ("Agentic Fit & Test Design", "20%"),
+    "build":    ("ReAct Implementation & Tools", "30%"),
+    "validate": ("Guardrails & Observability", "20%"),
+    "demo":     ("Inter-group Attack & Defense + Hybrid Flowchart", "30%"),
+}
+
+
+def _build_deep_subtasks(
+    task: dict,
+    canonical_role: str,
+    lab_sections: list,
+) -> list:
+    """
+    NODE 1 — Task Decomposer (inline, no extra LLM call).
+    Phân rã task thành subtask sâu với Why/How/DoD/Antipattern.
+    Ưu tiên dùng template _DEEP_SUBTASK_TEMPLATES, fallback phân rã từ checklist.
+    """
+    phase_type = task.get("phase_type", "build")
+    task_id = task.get("task_id", "T?")
+    checklist = task.get("checklist", [])
+
+    # Lookup template
+    template_key = (phase_type, canonical_role)
+    templates = _DEEP_SUBTASK_TEMPLATES.get(template_key, [])
+
+    # Nếu không có template → phân rã từ checklist
+    if not templates:
+        subtasks = []
+        for i, item in enumerate(checklist):
+            subtasks.append({
+                "subtask_id": f"{task_id}.{i+1}",
+                "priority": "P0" if i == 0 else ("P1" if i <= 2 else "P2"),
+                "title": item[:60],
+                "why": "Bước cần thiết để hoàn thành task này",
+                "how": [f"Thực hiện: {item}", "Verify kết quả", "Commit lên git"],
+                "input_needed": "Kết quả từ subtask trước",
+                "output_artifact": "File/artifact liên quan đến task",
+                "dod": f"Hoàn thành: {item}",
+                "antipattern": "Bỏ qua bước này hoặc làm tắt",
+                "estimated_minutes": 10,
+            })
+        return subtasks
+
+    # Enrich templates với task context
+    result = []
+    for tpl in templates:
+        sid = f"{task_id}{tpl['sid']}"
+        result.append({
+            "subtask_id": sid,
+            "priority": tpl.get("priority", "P1"),
+            "title": tpl["title"],
+            "why": tpl["why"],
+            "how": tpl["how"],
+            "input_needed": tpl.get("input_needed", ""),
+            "output_artifact": tpl.get("output_artifact", ""),
+            "dod": tpl["dod"],
+            "antipattern": tpl["antipattern"],
+            "estimated_minutes": tpl.get("estimated_minutes", 10),
+        })
+    return result
+
+
+def _render_subtask_block(st: dict) -> str:
+    """Render 1 subtask thành Markdown block theo NODE 4 format."""
+    how_lines = "\n".join(
+        f"  - ☐ ST-{st['subtask_id']}.{i+1} {step}"
+        for i, step in enumerate(st.get("how", []))
+    )
+    return (
+        f"**[{st.get('priority', 'P1')}] {st['subtask_id']} — {st['title']}**\n"
+        f"- 🎯 **Mục đích**: {st['why']}\n"
+        f"- 📋 **Các bước thực hiện**:\n{how_lines}\n"
+        f"- 📥 **Input cần từ**: {st.get('input_needed', '—')}\n"
+        f"- 📤 **Output tạo ra**: {st.get('output_artifact', '—')}\n"
+        f"- ✅ **Hoàn thành khi**: {st['dod']}\n"
+        f"- ⚠️ **Đừng mắc bẫy**: {st['antipattern']}\n"
+    )
+
+
+def _render_deep_plan_summary(
+    group_id: str,
+    lab_id: str,
+    lab_objective: str,
+    plan_members: list,
+    phases: list,
+    references: list,
+    common_pitfalls: list,
+) -> str:
+    """
+    NODE 2 + 3 + 4 — Dependency Map, Risk Annotator, Formatter (all inline).
+    Tạo deep plan summary dạng Markdown guidebook hoàn chỉnh.
+    """
+    lines: list[str] = []
+    lines.append(f"## 📋 Kế hoạch Lab `{lab_id}` — Nhóm {group_id}\n")
+    lines.append(f"**🎯 Mục tiêu:** {lab_objective or 'Hoàn thành bài lab đúng tiến độ'}\n")
+    lines.append("---\n")
+
+    # ── NODE 2: Execution Waves (infer từ phase_type order) ─────────────────
+    phase_type_order = ["design", "build", "validate", "demo"]
+    wave_labels = {
+        "design":   "🔍 Wave 1 — Phân tích & Thiết kế",
+        "build":    "🛠 Wave 2 — Xây dựng & Tích hợp",
+        "validate": "📊 Wave 3 — Kiểm thử & Validate",
+        "demo":     "🎤 Wave 4 — Demo & Tương tác liên nhóm",
+    }
+
+    # Xác định ai làm gì trong mỗi wave
+    wave_assignments: dict[str, list[str]] = {pt: [] for pt in phase_type_order}
+    for pm in plan_members:
+        for t in pm.get("tasks", []):
+            pt = t.get("phase_type", "build")
+            if pt in wave_assignments:
+                tid = t.get("task_id", "?")
+                uid = pm.get("user_id", "?")
+                role = pm.get("role", "")
+                wave_assignments[pt].append(f"[{uid} · {role}] {tid}: {t.get('title', '')}")
+
+    lines.append("### 🌊 Luồng Thực Thi (Execution Waves)\n")
+    lines.append("```")
+    active_waves = [pt for pt in phase_type_order if wave_assignments[pt]]
+    for pt in active_waves:
+        label = wave_labels.get(pt, pt)
+        lines.append(f"{label}:")
+        for item in wave_assignments[pt]:
+            lines.append(f"  ├── {item}")
+    # Critical path: task_id sequence across waves
+    cp_ids = []
+    for pt in active_waves:
+        for pm in plan_members:
+            for t in pm.get("tasks", []):
+                if t.get("phase_type") == pt:
+                    cp_ids.append(t.get("task_id", ""))
+                    break
+    lines.append("")
+    lines.append(f"🔗 Critical Path: {' → '.join(cp_ids)}")
+    lines.append("```\n")
+    lines.append("---\n")
+
+    # ── NODE 4: Per-member deep plan ─────────────────────────────────────────
+    lines.append("### 👥 Phân Công Chi Tiết\n")
+
+    for pm in plan_members:
+        uid = pm.get("user_id", "?")
+        role = pm.get("role", "Member")
+        canonical = pm.get("canonical_role", "fullstack")
+        lines.append(f"#### 👤 {role} ({uid})\n")
+
+        member_rubric_rows: list[str] = []
+        member_risk_rows: list[str] = []
+        member_quality_gates: list[str] = []
+
+        for t in pm.get("tasks", []):
+            tid = t.get("task_id", "?")
+            title = t.get("title", "")
+            phase_type = t.get("phase_type", "build")
+            est_min = t.get("estimated_minutes") or 30
+
+            rubric_name, rubric_weight = _RUBRIC_MAP.get(phase_type, ("Hoàn thành task", "?"))
+
+            lines.append(f"**📌 {tid} — {title}**")
+            lines.append(f"> ⏱️ ~{est_min} phút | 🎯 Rubric: {rubric_name} ({rubric_weight})\n")
+
+            # NODE 1: Render subtasks
+            subtasks = t.get("_deep_subtasks", [])
+            if subtasks:
+                for st in subtasks:
+                    lines.append(_render_subtask_block(st))
+            else:
+                # Fallback: render checklist với format đơn giản hơn
+                for i, item in enumerate(t.get("checklist", [])):
+                    priority = "P0" if i == 0 else ("P1" if i <= 2 else "P2")
+                    lines.append(
+                        f"**[{priority}] {tid}.{i+1} — {item[:60]}**\n"
+                        f"- 📋 Thực hiện: {item}\n"
+                        f"- ✅ Hoàn thành khi: kết quả được commit lên git\n"
+                    )
+
+            # Quality gate cho phase
+            gate = _QUALITY_GATES_BY_PHASE.get(phase_type, "")
+            if gate:
+                member_quality_gates.append(f"Sau {tid} ({phase_type}): {gate}")
+
+            # Risk items
+            risks = _RISK_BY_PHASE.get(phase_type, [])
+            for r in risks:
+                member_risk_rows.append(
+                    f"| {r['risk'][:60]} | {r['level']} | {r['mitigation'][:60]} |"
+                )
+
+            # Rubric row
+            subtask_ids = " + ".join(
+                st["subtask_id"] for st in subtasks
+            ) if subtasks else tid
+            member_rubric_rows.append(
+                f"| {rubric_name} | {rubric_weight} | {subtask_ids} | {role} |"
+            )
+
+            lines.append("")
+
+        # Quality Gates block
+        if member_quality_gates:
+            lines.append("**🚦 Quality Gates:**")
+            for gate in member_quality_gates:
+                lines.append(f"- [ ] {gate}")
+            lines.append("")
+
+        # Risk Flags block
+        if member_risk_rows:
+            lines.append("**🔴 Risk Flags:**")
+            lines.append("| Risk | Level | Mitigate |")
+            lines.append("|------|-------|----------|")
+            for row in member_risk_rows:
+                lines.append(row)
+            lines.append("")
+
+        lines.append("---\n")
+
+    # ── NODE 3: Rubric coverage table ─────────────────────────────────────
+    lines.append("### 📊 Coverage Rubric\n")
+    lines.append("| Tiêu chí | Trọng số | Subtask cover | Owner |")
+    lines.append("|----------|----------|---------------|-------|")
+    for pm in plan_members:
+        for t in pm.get("tasks", []):
+            phase_type = t.get("phase_type", "build")
+            rubric_name, rubric_weight = _RUBRIC_MAP.get(phase_type, ("Hoàn thành task", "?"))
+            subtasks = t.get("_deep_subtasks", [])
+            cover = " + ".join(st["subtask_id"] for st in subtasks) if subtasks else t.get("task_id", "?")
+            lines.append(f"| {rubric_name} | {rubric_weight} | {cover} | {pm.get('role', '?')} |")
+    lines.append("")
+
+    # References & pitfalls
+    if references:
+        lines.append("### 📚 Tài liệu tham khảo\n")
+        lines.extend(references[:8])
+        lines.append("")
+
+    if common_pitfalls:
+        pf_items = common_pitfalls if isinstance(common_pitfalls, list) else [common_pitfalls]
+        lines.append("### ⚠️ Lưu ý quan trọng\n")
+        for p in pf_items[:5]:
+            lines.append(f"- {p}")
+        lines.append("")
+
+    lines.append("> 💡 *Dùng `track_group_progress` để xem tiến độ, `update_group_progress` để cập nhật task.*")
+
+    return "\n".join(lines)
+
+
+# ═══════════════════════════════════════════════════════════════
 # TOOL FUNCTIONS
 # ═══════════════════════════════════════════════════════════════
 
@@ -752,14 +1261,65 @@ def generate_group_plan(
 
             phase_ids = {p["task_id"] for p in phases}
             if custom_tasks:
-                # Custom tasks từ leader — dùng prefix CT để tránh trùng phase ID
+                # Custom tasks từ leader — match với phases có sẵn để lấy context
+                phase_lookup = {p["title"].lower(): p for p in phases}
                 for ct in custom_tasks:
-                    member_tasks.append({
+                    ct_lower = ct.lower()
+                    # Thử match custom task với phase có sẵn
+                    matched_phase = None
+                    for key, p in phase_lookup.items():
+                        if any(word in ct_lower for word in key.split()) or any(word in key for word in ct_lower.split()):
+                            matched_phase = p
+                            break
+                    if not matched_phase:
+                        matched_phase = next(iter(phase_lookup.values()), None)
+
+                    ptype = matched_phase.get("phase_type", "build") if matched_phase else "build"
+                    phase_title = matched_phase.get("title", ct) if matched_phase else ct
+
+                    # Tìm lab context cho custom task
+                    lab_ctx = _find_lab_specific_context(canonical, ptype)
+
+                    # Gắn deep subtasks dựa trên matched phase + role
+                    matched_task = {
                         "task_id": _gen_custom_task_id(member_tasks, phase_ids),
+                        "phase_type": ptype,
+                        "checklist": _split_into_checklist("", ct),
+                    }
+                    deep_subtasks = _build_deep_subtasks(
+                        task=matched_task,
+                        canonical_role=canonical,
+                        lab_sections=lab_ctx.get("sections", []),
+                    ) if lab_ctx else []
+
+                    # Inject lab file references
+                    file_refs = ""
+                    lab_files = lab_ctx.get("files", []) if lab_ctx else []
+                    if lab_files:
+                        file_refs = "\n".join(f"    • `{f}`" for f in lab_files[:4])
+
+                    lab_recs_text = ""
+                    if lab_ctx:
+                        lab_recs = []
+                        for s in lab_ctx.get("sections", [])[:3]:
+                            rec = s["content"][:200].strip()
+                            if len(rec) > 20:
+                                lab_recs.append(f"    • [{s['file']}] {s['heading']}: {rec}...")
+                        if lab_recs:
+                            lab_recs_text = "\n\n**🔍 Nội dung từ tài liệu:**\n" + "\n".join(lab_recs)
+
+                    enriched_desc = f"**[{canonical.upper()}]** {phase_title[:200]}{file_refs}{lab_recs_text}"
+
+                    member_tasks.append({
+                        "task_id": matched_task["task_id"],
                         "title": ct,
-                        "description": "",
+                        "description": enriched_desc,
                         "checklist": _split_into_checklist("", ct),
                         "deliverable": "",
+                        "phase_type": ptype,
+                        "estimated_minutes": None,
+                        "_deep_subtasks": deep_subtasks,
+                        "lab_files": lab_files[:4] if lab_files else [],
                     })
             else:
                 # Template-based: chọn top phases phù hợp với role (max 6)
@@ -839,6 +1399,13 @@ def generate_group_plan(
                     role_tag = f"**[{canonical.upper()}]** "
                     enriched_description = (role_tag + p.get("description", "")[:300] + lab_context_block)
 
+                    # NODE 1: Phân rã task thành deep subtasks
+                    deep_subtasks = _build_deep_subtasks(
+                        task={"task_id": p["task_id"], "phase_type": ptype, "checklist": checklist},
+                        canonical_role=canonical,
+                        lab_sections=lab_ctx.get("sections", []),
+                    )
+
                     member_tasks.append({
                         "task_id": p["task_id"],
                         "title": p['title'],
@@ -847,6 +1414,9 @@ def generate_group_plan(
                         "deliverable": deliverable,
                         "lab_files": lab_files[:4],
                         "lab_recommendations": lab_recs[:3],
+                        "phase_type": ptype,
+                        "estimated_minutes": p.get("estimated_minutes"),
+                        "_deep_subtasks": deep_subtasks,
                     })
 
             plan_members.append({
@@ -908,56 +1478,37 @@ def generate_group_plan(
         conn.close()
 
         # ═══════════════════════════════════════════════════════════
-        # BƯỚC 6: Build response
+        # BƯỚC 6: Build response — Deep Plan (Divide & Conquer)
+        # NODE 2+3+4 inline: Dependency Map + Risk Annotator + Formatter
         # ═══════════════════════════════════════════════════════════
-        lines = []
-        for pm in plan_members:
-            role = pm["role"]
-            uid  = pm["user_id"]
-            task_strs = []
-            for t in pm["tasks"]:
-                cl_summary = ", ".join(t.get("checklist", [])[:4])
-                if len(t.get("checklist", [])) > 4:
-                    cl_summary += f" ... (+{len(t['checklist']) - 4})"
-                task_strs.append(
-                    f"  **{t['task_id']}:** {t['title']}\n"
-                    f"     ☐ {cl_summary}"
-                )
-            lines.append(f"### {role} ({uid})\n" + "\n".join(task_strs))
-
-        pitfall_text = ""
-        if common_pitfalls:
-            pf_items = common_pitfalls if isinstance(common_pitfalls, list) else [common_pitfalls]
-            pitfall_text = "\n\n### ⚠️ Lưu ý quan trọng\n" + "\n".join(f"  • {p}" for p in pf_items[:5])
-
-        phase_list = []
-        for p in phases:
-            phase_list.append(f"- **{p['task_id']} — {p['title']}**")
-
-        plan_summary = (
-            f"## 📋 Kế hoạch Lab `{lab_id}` — Nhóm {group_id}\n\n"
-            f"**🎯 Mục tiêu:** {lab_objective or 'Hoàn thành bài lab đúng tiến độ'}\n\n"
-            f"---\n"
-            f"### 📊 Các Giai Đoạn\n" + "\n".join(phase_list) + "\n\n"
-            f"---\n"
-            f"### 👥 Phân Công Chi Tiết\n\n" + "\n\n".join(lines) + "\n\n"
-            f"---\n"
-            f"### 📚 Tài liệu tham khảo\n" + "\n".join(references[:8]) +
-            pitfall_text +
-            f"\n\n> 💡 *Dùng `track_group_progress` để xem tiến độ, `update_group_progress` để cập nhật task.*"
+        plan_summary = _render_deep_plan_summary(
+            group_id=group_id,
+            lab_id=lab_id,
+            lab_objective=lab_objective,
+            plan_members=plan_members,
+            phases=phases,
+            references=references,
+            common_pitfalls=common_pitfalls,
         )
 
         # Build todo_list: flattened tasks for tracking
+        # Dùng _deep_subtasks để tạo granular checklist nếu có
         todo_list = []
         for pm in plan_members:
             for t in pm["tasks"]:
+                deep = t.get("_deep_subtasks", [])
+                if deep:
+                    # Flatten subtasks thành checklist items
+                    cl = [f"{st['subtask_id']}: {st['title']}" for st in deep]
+                else:
+                    cl = t.get("checklist", [])
                 todo_list.append({
                     "group_id": group_id,
                     "user_id": pm["user_id"],
                     "role": pm["role"],
                     "task_id": t["task_id"],
                     "title": t["title"],
-                    "checklist": t.get("checklist", []),
+                    "checklist": cl,
                     "deliverable": t.get("deliverable", ""),
                     "status": "in_progress",
                 })
@@ -1223,16 +1774,17 @@ def list_members() -> Dict[str, Any]:
     """
     try:
         ctx = discord_context.get()
-        if not ctx or not ctx.group_id or not ctx.members:
+        if not ctx or not ctx.group_id:
             return {"status": "empty", "error_code": "NO_CONTEXT",
                     "message": "Tool chỉ dùng được trong group room Discord."}
 
+        members = ctx.members or []
         return {
             "status": "success",
             "group_id": ctx.group_id,
             "channel_type": ctx.channel_type or "group_room",
-            "members": ctx.members,
-            "total": len(ctx.members),
+            "members": members,
+            "total": len(members),
             "note": "Dùng các ID này để truyền vào generate_group_plan. Ưu tiên @mention nếu có thể.",
         }
     except Exception as e:
