@@ -1,0 +1,424 @@
+{
+  "case_id": "01",
+  "title": "Học viên hỏi nhận bài lab cá nhân",
+  "input": "Cho mình bài lab hôm nay đi",
+  "context": {
+    "user_id": "U_STU1",
+    "channel_type": "general",
+    "group_id": null,
+    "lab_id": "3",
+    "members": []
+  },
+  "applies": "Đúng có căn cứ · Đúng workflow",
+  "status": "answered",
+  "assistant_text": "Bài Lab hôm nay (Lab 3) có nội dung như sau:\n\n### Mục tiêu\nBài Lab 3 nhằm giúp sinh viên hiểu rõ sự tiến hóa của hệ thống AI hội thoại qua 4 cấp độ, từ Rule-Based Bot đến Reactive Agent. Sinh viên sẽ xây dựng một chatbot baseline, thiết kế tool contract, lắp ráp ReAct Agent, và so sánh hiệu suất giữa hai hệ thống này trên cùng một bộ test case thực tế.\n\n### Thời gian\nBài lab có tổng thời lượng 150 phút, được chia thành 4 mốc chính:\n- **Mốc 1 (20 phút)**: Định hình & Đánh giá Agentic Fit\n- **Mốc 2 (30 phút)**: Baseline Chatbot & Khai báo Tool Specs\n- **Mốc 3 (60 phút)**: ReAct Loop & Safeguards\n- **Mốc 4 (40 phút)**: Tương tác liên nhóm & Hybrid Pattern (Cross-Audit)\n\n### Hướng dẫn thiết lập\n1. Fork repository `Day-3-Lab-Chatbot-vs-react-agent-E402` và clone nó về máy cục bộ.\n2. Tạo môi trường ảo bằng `python -m venv .venv`.\n3. Kích hoạt môi trường ảo và cài đặt tất cả các thư viện cần thiết từ `requirements.txt`.\n4. Sao chép file `.env.example` thành `.env` để cấu hình API Keys và chạy smoke test bằng `python src/app.py`.\n\n### Các nhiệm vụ\n1. **Task 1**: Định hình & Đánh giá Agentic Fit\n   - Lựa chọn một chủ đề bài toán thực tế.\n   - Lập bảng chấm điểm Scoring Matrix.\n   - Liệt kê tên các công cụ sẽ tạo trong `src/tools.py`.\n\n2. **Task 2**: Baseline Chatbot & Khai báo Tool Specs\n   - Xây dựng một Chatbot Baseline.\n   - Viết bộ test cases và bổ sung mô tả chi tiết cho các hàm công cụ.\n\n3. **Task 3**: ReAct Loop & Safeguards\n   - Xây dựng ReAct Agent.\n   - Triển khai các 'phanh an toàn' cho các công cụ.\n\n4. **Task 4**: Tương tác liên nhóm & Hybrid Flowchart\n   - Thử thách khả năng chịu lỗi và tính bền vững của Agent.\n   - Chuẩn bị trình chiếu và phản biện về ứng dụng Agent của nhóm.\n\n### Tiêu chí chấm điểm\nBài lab sẽ đánh giá khả năng thiết kế Agent, triển khai vòng lặp ReAct, khả năng xử lý lỗi của tool, cũng như việc xây dựng các safeguard.\n\n### Một số cạm bẫy thường gặp\n- Chatbot Baseline đưa ra câu trả lời không có căn cứ.\n- Các hàm công cụ gặp lỗi và làm crash toàn bộ ứng dụng.\n- ReAct Agent rơi vào vòng lặp vô hạn hoặc không suy luận đúng.\n\nNếu bạn cần thêm thông tin chi tiết về từng nhiệm vụ hoặc tài liệu liên quan, hãy cho mình biết nhé!",
+  "tool_events": [
+    {
+      "tool": "get_lab_content",
+      "args": {},
+      "result": {
+        "status": "success",
+        "lab_id": "3",
+        "lab_objective": "Bài Lab 3 nhằm giúp sinh viên hiểu rõ sự tiến hóa của hệ thống AI hội thoại qua 4 cấp độ, từ Rule-Based Bot đến Reactive Agent. Sinh viên sẽ xây dựng một chatbot baseline, thiết kế tool contract, lắp ráp ReAct Agent, và so sánh hiệu suất giữa hai hệ thống này trên cùng một bộ test case thực tế. Mục tiêu cuối cùng là phát triển một AI Agent có khả năng suy luận, tương tác với công cụ để cung cấp thông tin chính xác và giải quyết các bài toán phức tạp hơn chatbot truyền thống.",
+        "timeline": "Bài lab có tổng thời lượng 150 phút, được chia thành 4 mốc chính: Mốc 1 (20 phút) cho Định hình & Đánh giá Agentic Fit; Mốc 2 (30 phút) cho Baseline Chatbot & Khai báo Tool Specs; Mốc 3 (60 phút) cho ReAct Loop & Safeguards; và Mốc 4 (40 phút) cho Tương tác liên nhóm & Hybrid Pattern (Cross-Audit).",
+        "setup_instructions": "Để bắt đầu bài lab, sinh viên cần fork repository `Day-3-Lab-Chatbot-vs-react-agent-E402` và clone nó về máy cục bộ. Sau đó, điều hướng vào thư mục dự án và tạo một môi trường ảo bằng `python -m venv .venv`. Kích hoạt môi trường ảo (`source .venv/bin/activate` hoặc `.\\.venv\\Scripts\\Activate.ps1` trên Windows PowerShell) và cập nhật pip, sau đó cài đặt tất cả các thư viện cần thiết từ `requirements.txt` bằng `python -m pip install -r requirements.txt`. Cuối cùng, sao chép file `.env.example` thành `.env` để cấu hình API Keys và chạy smoke test bằng `python src/app.py` để đảm bảo môi trường hoạt động.",
+        "tasks": [
+          {
+            "name": "Task 1: Định hình & Đánh giá Agentic Fit",
+            "description": "Trong task này, cả nhóm sẽ lựa chọn một chủ đề bài toán thực tế mà mình hào hứng, từ danh sách gợi ý hoặc tự đề xuất. Mục tiêu là chứng minh rằng bài toán đã chọn thực sự CẦN một Agent (ReAct) chứ không chỉ một Chatbot đơn thuần. Sinh viên cần lập bảng chấm điểm Scoring Matrix để đánh giá độ phù hợp của bài toán với kiến trúc Agentic.",
+            "checklist": [
+              "Cả nhóm lựa chọn 1 chủ đề bài toán thực tế (tham khảo `DANH_SACH_DE_TAI.md`).",
+              "Role 5 và cả nhóm điền bảng Scoring Matrix (chấm 1–5 điểm cho 4 tiêu chí) vào `docs/trace_eval.md`.",
+              "Role 2 liệt kê tên các công cụ sẽ tạo trong `src/tools.py` dựa trên bài toán đã chọn."
+            ],
+            "deliverable": "Bảng Scoring Matrix trong `docs/trace_eval.md` và danh sách tên các công cụ dự kiến trong `src/tools.py`.",
+            "estimated_minutes": 20
+          },
+          {
+            "name": "Task 2: Baseline Chatbot & Khai báo Tool Specs",
+            "description": "Mục tiêu của task này là xây dựng một Chatbot Baseline chỉ sử dụng LLM mà không có khả năng tương tác với công cụ bên ngoài, nhằm thấy rõ giới hạn của nó. Đồng thời, nhóm cần chuẩn hóa các công cụ sẽ được sử dụng bởi Agent trong tương lai. Điều này bao gồm việc viết bộ test cases và bổ sung mô tả chi tiết (Docstring) cho các hàm công cụ.",
+            "checklist": [
+              "Role 1 viết bộ Test Cases (câu đơn giản, câu multi-step, câu bẫy) vào file `config/test_cases.json`.",
+              "Role 2 dùng AI bổ sung Docstring / Mô tả chuẩn cho các hàm trong `src/tools.py`.",
+              "Role 3 soạn `CHATBOT_BASELINE_PROMPT` trong file `src/prompts.py`.",
+              "Role 4 (Đầu mối Lắp ráp) thực hiện `git pull` để kéo file của Role 1, 2, 3 về máy và hoàn thiện hàm `run_baseline_chatbot()` trong `src/app.py`."
+            ],
+            "deliverable": "File `config/test_cases.json` với bộ test cases, các hàm trong `src/tools.py` có Docstring/mô tả chuẩn, `CHATBOT_BASELINE_PROMPT` trong `src/prompts.py` và hàm `run_baseline_chatbot()` hoàn chỉnh trong `src/app.py`.",
+            "estimated_minutes": 30
+          },
+          {
+            "name": "Task 3: ReAct Loop & Safeguards",
+            "description": "Task này tập trung vào việc xây dựng ReAct Agent, một hệ thống có khả năng suy luận theo vòng lặp Thought -> Action -> Observation để giải quyết vấn đề bằng cách gọi các công cụ thực tế. Đồng thời, nhóm cần triển khai các 'phanh an toàn' (safeguards) như giới hạn số lần lặp và xử lý lỗi cho các công cụ để đảm bảo tính ổn định và an toàn của Agent.",
+            "checklist": [
+              "Role 3 soạn `REACT_SYSTEM_PROMPT` (ép AI sinh Thought -> Action) và đặt `MAX_ITERATIONS` (giới hạn số lần lặp) trong `src/prompts.py`.",
+              "Role 2 đảm bảo các hàm trong `src/tools.py` khi gặp lỗi sẽ trả về chuỗi thông báo lỗi chứ không làm crash code.",
+              "Role 4 (Đầu mối Lắp ráp & Vibe App) thực hiện `git pull` để kéo toàn bộ code mới nhất và hoàn thiện vòng lặp ReAct Agent Loop trong `src/app.py`."
+            ],
+            "deliverable": "File `src/prompts.py` với `REACT_SYSTEM_PROMPT` và `MAX_ITERATIONS`, các hàm trong `src/tools.py` có xử lý lỗi trả về chuỗi thông báo, và vòng lặp ReAct Agent hoàn chỉnh trong `src/app.py`.",
+            "estimated_minutes": 60
+          },
+          {
+            "name": "Task 4: Tương tác liên nhóm & Hybrid Flowchart",
+            "description": "Trong task cuối cùng này, sinh viên sẽ thử thách khả năng chịu lỗi và tính bền vững của Agent trước các 'đòn tấn công' từ nhóm khác thông qua cơ chế chấm chéo (cross-audit). Mục tiêu là chứng minh Agent hoạt động ổn định và giải quyết được các câu hỏi bẫy hoặc đa bước. Hoạt động này cũng có thể bao gồm việc trình bày và phản biện về kiến trúc Hybrid của Agent.",
+            "checklist": [
+              "Chuẩn bị trình chiếu và phản biện về ứng dụng Agent của nhóm.",
+              "Một thành viên đại diện được chỉ định để trả lời câu hỏi và giải quyết các câu hỏi bẫy từ giảng viên/các nhóm khác.",
+              "Tham gia chấm chéo hoặc kiểm tra chéo sản phẩm của các nhóm khác theo hướng dẫn của giảng viên."
+            ],
+            "deliverable": "Không có sản phẩm nộp riêng, tập trung vào hiệu suất hoạt động của Agent và khả năng trình bày, phản biện của nhóm trong buổi tương tác.",
+            "estimated_minutes": 40
+          }
+        ],
+        "grading_rubrics": "Cơ chế chấm điểm của bài lab dựa trên các tiêu chí cụ thể với trọng số tương ứng. Mặc dù thông tin chi tiết về các tiêu chí và trọng số bị cắt ngắn, bài lab sẽ đánh giá cao khả năng thiết kế Agent, triển khai vòng lặp ReAct, khả năng xử lý lỗi của tool, cũng như việc xây dựng các safeguard. Điểm tối đa cho tiêu chí Agentic Fit là 20 điểm.",
+        "common_pitfalls": [
+          "Chatbot Baseline đưa ra câu trả lời nghe hợp lý nhưng không có căn cứ (ungrounded): Chatbot thuần túy có thể đưa ra các phản hồi nghe có vẻ thuyết phục nhưng không dựa trên dữ liệu thời gian thực hoặc thông tin xác thực. Hậu quả là cung cấp thông tin sai lệch cho người dùng. Cách tránh là nhận diện rõ giới hạn của chatbot và biết khi nào cần sử dụng Agent có khả năng gọi công cụ.",
+          "Các hàm công cụ (tools) gặp lỗi và làm crash toàn bộ ứng dụng: Nếu các hàm được khai báo trong `src/tools.py` không có cơ chế xử lý ngoại lệ mạnh mẽ, một lỗi nhỏ trong quá trình gọi công cụ có thể khiến toàn bộ Agent dừng hoạt động. Hậu quả là trải nghiệm người dùng tệ và hệ thống không ổn định. Cách tránh là đảm bảo mọi hàm công cụ đều có khối `try-except` để bắt lỗi và trả về chuỗi thông báo lỗi thân thiện thay vì crash.",
+          "ReAct Agent rơi vào vòng lặp vô hạn hoặc không suy luận đúng Thought -> Action: Nếu `REACT_SYSTEM_PROMPT` không được soạn thảo kỹ lưỡng hoặc `MAX_ITERATIONS` không được đặt, Agent có thể không tuân theo quy trình suy luận hoặc lặp lại các hành động vô nghĩa. Hậu quả là Agent không hoàn thành nhiệm vụ hoặc tiêu tốn tài nguyên quá mức. Cách tránh là thiết lập `MAX_ITERATIONS` một cách hợp lý và viết `REACT_SYSTEM_PROMPT` thật rõ ràng, ép buộc AI tuân thủ cấu trúc Thought -> Action -> Observation.",
+          "Không kiểm tra đủ các trường hợp (test cases) đa dạng: Chỉ thử nghiệm với các câu hỏi đơn giản có thể bỏ qua các kịch bản phức tạp, đa bước hoặc các câu hỏi bẫy mà Agent cần xử lý. Hậu quả là Agent hoạt động kém trong thực tế. Cách tránh là xây dựng bộ test cases đa dạng bao gồm cả câu đơn giản, đa bước và các trường hợp bẫy để đánh giá toàn diện khả năng của Agent."
+        ],
+        "file_summaries": [
+          {
+            "file": "README.md",
+            "summary": "File này cung cấp tổng quan về Bài Lab 3, giới thiệu nền tảng lý thuyết về 4 cấp độ AI hội thoại và cấu trúc thư mục dự án. Nó cũng trình bày lộ trình thực hành chi tiết với 4 mốc thời gian và sơ lược về cơ chế chấm điểm."
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "summary": "Tài liệu này là hướng dẫn code lab chi tiết cho Bài Lab 3, giải thích sâu hơn về 4 cấp độ tiến hóa của AI hội thoại và hướng dẫn cụ thể các bước cài đặt môi trường. Nó cũng giúp sinh viên hiểu rõ kiến trúc dự án và đặt ra mục tiêu cho việc xây dựng chatbot baseline và ReAct Agent."
+          },
+          {
+            "file": "docs/DANH_SACH_DE_TAI.md",
+            "summary": "File này liệt kê 10 đề tài gợi ý cho bài lab, giúp sinh viên có ý tưởng cho việc lựa chọn bài toán thực tế để xây dựng Chatbot hoặc ReAct Agent. Các đề tài đa dạng từ trợ lý ghép đôi, tư vấn sự nghiệp đến quản lý đơn hàng và đặt lịch khám bệnh."
+          },
+          {
+            "file": "docs/PHAN_CONG_CONG_VIEC.md",
+            "summary": "Tài liệu này là sổ tay phân công vai trò và checklist thực hành chi tiết cho các thành viên trong nhóm, chia theo 4 mốc thời gian của bài lab. Nó chỉ rõ nhiệm vụ của từng vai trò (Product Architect, Tool Developer, Prompt Engineer, v.v.) và các công việc cần hoàn thành cho mỗi mốc."
+          },
+          {
+            "file": "docs/trace_eval.md",
+            "summary": "File này dành cho Role 5 (Observability & Reviewer) để báo cáo giám sát và đánh giá. Nó chứa bảng chấm điểm Agentic Fit (Scoring Matrix) để đánh giá sự phù hợp của bài toán với kiến trúc Agentic, và so sánh phản hồi giữa Chatbot Baseline và ReAct Agent cho một test case cụ thể, minh họa sự vượt trội của ReAct Agent."
+          }
+        ],
+        "total_documents": 5,
+        "sitemap": [
+          {
+            "file": "README.md",
+            "title": "🏫 BÀI LAB 3: CHATBOT VS REACT AGENT - TỪ Ý TƯỞNG ĐẾN THỰC THI"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "title": "Lab 03 — Chatbot vs ReAct Agent"
+          },
+          {
+            "file": "docs/DANH_SACH_DE_TAI.md",
+            "title": "💡 DANH SÁCH ĐỀ TÀI GỢI Ý (SUGGESTED LAB TOPICS)"
+          },
+          {
+            "file": "docs/PHAN_CONG_CONG_VIEC.md",
+            "title": "📋 SỔ TAY PHÂN CÔNG & CHECKLIST THỰC HÀNH (ZERO-CONFLICT WORKFLOW)"
+          },
+          {
+            "file": "docs/trace_eval.md",
+            "title": "📊 BÁO CÁO GIÁM SÁT & ĐÁNH GIÁ (OBSERVABILITY TRACE LOGS)"
+          }
+        ],
+        "documents": [
+          {
+            "file": "README.md",
+            "title": "🏫 BÀI LAB 3: CHATBOT VS REACT AGENT - TỪ Ý TƯỞNG ĐẾN THỰC THI",
+            "section_count": 5,
+            "sections": [
+              {
+                "heading": "🏫 BÀI LAB 3: CHATBOT VS REACT AGENT - TỪ Ý TƯỞNG ĐẾN THỰC THI",
+                "level": 1,
+                "content": "---"
+              },
+              {
+                "heading": "💡 1. LỜI NÓI ĐẦU & NỀN TẢNG LÝ THUYẾT (4 CẤP ĐỘ AI HỘI THOẠI)",
+                "level": 3,
+                "content": "Bài Lab giúp bạn hiểu rõ sự tiến hóa qua 4 cấp độ của hệ thống AI:\n\n| Cấp độ | Loại hệ thống | Đặc điểm chính | Sự xuất hiện trong Bài Lab |\n| :---: | :--- | :--- | :--- |\n| **Cấp 1** | **Rule-Based Bot** | Khớp từ khóa if/else cố định, không có LLM | *Minh họa lịch sử* |\n| **Cấp 2** | **LLM Chatbot"
+              },
+              {
+                "heading": "📂 2. CẤU TRÚC THƯ MỤC DỰ ÁN",
+                "level": 3,
+                "content": "```text\n📁 Day-3-Lab-Chatbot-vs-react-agent-E402/\n├── 📄 README.md                 <-- 📘 Tổng quan bài Lab & Thang điểm\n├── 📄 .env.example              <-- 🔑 File mẫu API Key\n├── 📄 requirements.txt          <-- 📦 Thư viện cần cài đặt\n│\n├── 📁 config/                   <-- 🛠️ CẤU HÌNH & DỮ LIỆU\n│   └── "
+              },
+              {
+                "heading": "⏱️ 3. LỘ TRÌNH THỰC HÀNH (4 MỐC / 150 PHÚT)",
+                "level": 3,
+                "content": "```mermaid\ntimeline\n    title ⏱️ KỊCH BẢN THỰC HÀNH LAB 3 (Tổng thời lượng: 150 phút)\n    Mốc 1 (20 phút) : Định hình & Đánh giá Agentic Fit : Chọn bài toán & Lập bảng chấm điểm Scoring Matrix\n    Mốc 2 (30 phút) : Baseline Chatbot & Khai báo Tool : Dựng Chatbot gốc & Viết Tool Specs + 5 Test Cases\n"
+              },
+              {
+                "heading": "💯 4. CƠ CHẾ CHẤM ĐIỂM  (SCORING RUBRIC)",
+                "level": 3,
+                "content": "| Tiêu chí                                |  Trọng số  | Mô tả chi tiết                                                                                                             | Bằng chứng kiểm tra (Artifacts)                                        |\n| :---------------------------------------- |"
+              }
+            ]
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "title": "Lab 03 — Chatbot vs ReAct Agent",
+            "section_count": 26,
+            "sections": [
+              {
+                "heading": "Lab 03 — Chatbot vs ReAct Agent",
+                "level": 1,
+                "content": "**AI Agent · Day 3 · ~240 phút****VinUni AI Codelab × GDGoC · Cập nhật 2026-07-27**\n\n> **240 phút · Day 3 · intermediate.** Bạn sẽ xây một chatbot baseline, thiết kế tool contract, lắp [ReAct Agent](#glossary \"Reasoning + Acting — kiến trúc agent luân phiên suy nghĩ (Thought), hành động (Action) và "
+              },
+              {
+                "heading": "🧩 4 Cấp Độ Tiến Hóa Của AI Hội Thoại (From Rule-Based to Autonomous Agent)",
+                "level": 3,
+                "content": "| Cấp độ | Loại hệ thống | Cách hoạt động | Đánh giá & Ứng dụng trong Bài Lab |\n| :---: | :--- | :--- | :--- |\n| **Cấp 1** | **Rule-Based Bot** | Khớp từ khóa if/else cố định | Nhanh nhưng cứng nhắc, không có LLM (*Lịch sử*) |\n| **Cấp 2** | **LLM Chatbot** | Dùng LLM sinh text mượt mà | Trả lời tự n"
+              },
+              {
+                "heading": "1. Setup và hiểu kiến trúc",
+                "level": 2,
+                "content": ":::goal{title=\"Repo chạy, kiến trúc rõ\"}\nBạn có repo `Day-3-Lab-Chatbot-vs-react-agent-E402` trên máy, môi trường sẵn sàng, hiểu vai trò từng thành phần và phân vai nhóm 5-6 người.\n:::"
+              },
+              {
+                "heading": "Fork, clone, cài môi trường",
+                "level": 3,
+                "content": "Mở repo `Day-3-Lab-Chatbot-vs-react-agent-E402`, bấm **Fork** rồi clone về máy theo hướng dẫn.\n\nCài môi trường:\n\n```bash\ncd Day-3-Lab-Chatbot-vs-react-agent-E402\npython -m venv .venv\nsource .venv/bin/activate        # Windows PowerShell: .venv\\Scripts\\Activate.ps1\npython -m pip install --upgrade pip"
+              },
+              {
+                "heading": "Kiến trúc — biết trước khi code",
+                "level": 3,
+                "content": "Mở [README.md](file:///c:/Users/Admin/Documents/VinUni/LabCoachVin/LabKeyCoach/Day-3-Lab-Chatbot-vs-react-agent-E402/README.md) và [docs/PHAN_CONG_CONG_VIEC.md](file:///c:/Users/Admin/Documents/VinUni/LabCoachVin/LabKeyCoach/Day-3-Lab-Chatbot-vs-react-agent-E402/docs/PHAN_CONG_CONG_VIEC.md). Đọc sơ "
+              },
+              {
+                "heading": "2. Chatbot baseline — thấy giới hạn, rồi xây đường cơ sở",
+                "level": 2,
+                "content": ":::goal{title=\"Hiểu giới hạn chatbot và có baseline công bằng\"}\nNhận ra chatbot thuần không có grounding dữ liệu thời gian thực, rồi xây baseline một LLM call không dùng tool để làm đường cơ sở so sánh với Agent.\n:::"
+              },
+              {
+                "heading": "Hook — Chatbot biết gì thật?",
+                "level": 3,
+                "content": "Tưởng tượng hỏi Chatbot tư vấn đặt vé & thời tiết:\n\n> *\"Thời tiết ở Hà Nội hôm nay thế nào và tôi nên chọn chuyến bay nào đi Hà Nội ngày mai?\"*\n\nTự trả lời: Giá vé đến từ đâu? Thời tiết có chuẩn hôm nay không? Một câu trả lời nghe hợp lý có đồng nghĩa là **grounded** (có bằng chứng thực tế) không?\n\n"
+              },
+              {
+                "heading": "Xây baseline trong `src/prompts.py` & `src/app.py`",
+                "level": 3,
+                "content": "Baseline protocol:\n\n```text\nsystem prompt + user message → một LLM call → final response (không gọi Tool)\n```\n\nBaseline **KHÔNG** được: gọi tool, nhúng sẵn kết quả tool vào prompt, hoặc khẳng định action đã hoàn tất.\n\n**Bạn làm**:\n\n1. **Role 3**: Mở `src/prompts.py` — soạn `CHATBOT_BASELINE_PROMPT`."
+              },
+              {
+                "heading": "3. Thiết kế và test tool",
+                "level": 2,
+                "content": ":::goal{title=\"Tool chạy đúng, test pass — trước khi gắn Agent\"}\nViết các tool deterministic trong src/tools.py, có contract rõ ràng và xử lý error an toàn.\n:::"
+              },
+              {
+                "heading": "Tại sao test tool riêng trước?",
+                "level": 3,
+                "content": "Nếu gắn tool chưa test vào Agent rồi Agent chạy sai ➔ Bạn không biết lỗi nằm ở Tool hay nằm ở Agent. Test riêng tool trước giúp loại bỏ hoàn toàn một nguồn lỗi!"
+              }
+            ]
+          },
+          {
+            "file": "docs/DANH_SACH_DE_TAI.md",
+            "title": "💡 DANH SÁCH ĐỀ TÀI GỢI Ý (SUGGESTED LAB TOPICS)",
+            "section_count": 1,
+            "sections": [
+              {
+                "heading": "💡 DANH SÁCH ĐỀ TÀI GỢI Ý (SUGGESTED LAB TOPICS)",
+                "level": 1,
+                "content": "1. Cupid Agent: Trợ Lý Ghép Đôi & Phân Tích Độ Tương Thích\n2. Chatbot Định Hướng Sự Nghiệp\n3. Trợ Lý Nắm Bắt Tính Cách & Chọn Quà Tặng Phù Hợp\n4. Trợ Lý Khai Quật Nhân Cách Thứ 2 & Tư Vấn Tâm Lý\n5. Trợ Lý Tra Cứu Đơn Hàng & Xử Lý Đổi Trả\n6. Đặt Lịch Khám Bệnh & Tư Vấn Chuyên Khoa\n7. Trợ Lý Tư Vấn Kh"
+              }
+            ]
+          },
+          {
+            "file": "docs/PHAN_CONG_CONG_VIEC.md",
+            "title": "📋 SỔ TAY PHÂN CÔNG & CHECKLIST THỰC HÀNH (ZERO-CONFLICT WORKFLOW)",
+            "section_count": 7,
+            "sections": [
+              {
+                "heading": "📋 SỔ TAY PHÂN CÔNG & CHECKLIST THỰC HÀNH (ZERO-CONFLICT WORKFLOW)",
+                "level": 1,
+                "content": "> 💡 **Hướng dẫn**: Mỗi thành viên mở đúng file được phân công trong thư mục dự án và thực hiện checklist theo từng Mốc.\n\n---"
+              },
+              {
+                "heading": "👥 1. BẢNG PHÂN VAI & FILE ĐẢM NHẬN",
+                "level": 2,
+                "content": "| Vai trò (Role)                               | File đảm nhận           | Nhiệm vụ chính                                                                                          | Người đảm nhận  | Mã sinh viên |\n| :-------------------------------------------- | :------------------------- | :------"
+              },
+              {
+                "heading": "⏱️ 2. CHECKLIST THỰC HÀNH THEO 4 MỐC",
+                "level": 2,
+                "content": ""
+              },
+              {
+                "heading": "📍 MỐC 1: Định hình & Đánh giá độ phù hợp (Agentic Fit) (20 phút)",
+                "level": 3,
+                "content": "*Mục tiêu: Chứng minh bài toán này CẦN dùng Agent chứ không chỉ Chatbot.*\n\n- [ ] **Role 1 & Cả nhóm**: **Tự do lựa chọn 1 chủ đề bài toán thực tế** mà nhóm hào hứng nhất (Xem 10 đề tài gợi ý tại: [DANH_SACH_DE_TAI.md](file:///c:/Users/Admin/Documents/VinUni/LabCoachVin/LabKeyCoach/Day-3-Lab-Chatbot-"
+              },
+              {
+                "heading": "📍 MỐC 2: Baseline Chatbot & Khai báo Tool Specs (30 phút)",
+                "level": 3,
+                "content": "*Mục tiêu: Thấy rõ hạn chế của Chatbot gốc và chuẩn hóa công cụ cho Agent.*\n\n- [ ] **Role 1**: Viết bộ **Test Cases** vào file `config/test_cases.json` (câu đơn giản, câu multi-step, câu bẫy).\n- [ ] **Role 2**: Dùng AI bổ sung Docstring / Mô tả chuẩn cho các hàm trong `src/tools.py`.\n- [ ] **Role 3*"
+              },
+              {
+                "heading": "📍 MỐC 3: ReAct Loop & Safeguards (60 phút)",
+                "level": 3,
+                "content": "*Mục tiêu: Dựng ReAct Agent suy luận Thought -> Action và cài phanh an toàn.*\n\n- [ ] **Role 3**: Soạn `REACT_SYSTEM_PROMPT` (ép AI sinh Thought -> Action) và đặt `MAX_ITERATIONS (giới hạn số lần lặp)` trong `src/prompts.py`.\n- [ ] **Role 2**: Đảm bảo các hàm trong `src/tools.py` khi gặp lỗi sẽ trả v"
+              },
+              {
+                "heading": "📍 MỐC 4: Tương tác liên nhóm & Hybrid Flowchart (40 phút)",
+                "level": 3,
+                "content": "*Mục tiêu: Thử thách khả năng chịu lỗi trước đòn tấn công từ nhóm khác & Chấm chéo linh hoạt.*\n\n> 💡 **HÌNH THỨC TƯƠNG TÁC (Tùy Giảng viên chỉ định)**:\n>\n> * 🎲 **Hình thức 1 (Gọi ngẫu nhiên)**: Giảng viên gọi ngẫu nhiên một thành viên đại diện trong bất kỳ nhóm nào lên trình chiếu App, phản biện và t"
+              }
+            ]
+          },
+          {
+            "file": "docs/trace_eval.md",
+            "title": "📊 BÁO CÁO GIÁM SÁT & ĐÁNH GIÁ (OBSERVABILITY TRACE LOGS)",
+            "section_count": 5,
+            "sections": [
+              {
+                "heading": "📊 BÁO CÁO GIÁM SÁT & ĐÁNH GIÁ (OBSERVABILITY TRACE LOGS)",
+                "level": 1,
+                "content": "*Dành cho Role 5: Observability & Reviewer*\n\n---"
+              },
+              {
+                "heading": "🎯 1. BẢNG CHẤM ĐIỂM AGENTIC FIT (SCORING MATRIX)",
+                "level": 2,
+                "content": "| Tiêu chí | Điểm (1-5) | Lý do đánh giá |\n| :--- | :---: | :--- |\n| 🧠 **Multi-step Reasoning** | `4/5` | Cần suy luận từ tra cứu thời tiết đến chọn trang phục. |\n| 🛠️ **Tool Interaction** | `5/5` | Cần tra cứu dữ liệu thời gian thực qua API thời tiết/chuyến bay. |\n| 🔀 **Dynamic Decision** | `4/5` |"
+              },
+              {
+                "heading": "🔍 2. SO SÁNH PHẢN HỒI (TEST CASE #3)",
+                "level": 2,
+                "content": "**Câu hỏi**: *\"Thời tiết ở Hà Nội hôm nay thế nào và tôi nên mặc gì đi chơi?\"*"
+              },
+              {
+                "heading": "🤖 Chatbot Baseline:",
+                "level": 3,
+                "content": "* **Phản hồi**: *\"Tôi không có truy cập Internet thời gian thực nên không biết thời tiết hôm nay ở Hà Nội.\"*\n* **Nhận xét**: An toàn nhưng không giải quyết được nhu cầu thực tế của người dùng."
+              },
+              {
+                "heading": "🧠 ReAct Agent:",
+                "level": 3,
+                "content": "* **Thought 1**: Cần tra cứu thời tiết Hà Nội.\n* **Action 1**: `get_weather['Hà Nội']`\n* **Observation 1**: `Thời tiết Hà Nội: 28°C, Nắng nhẹ, Độ ẩm 65%.`\n* **Thought 2**: Đã có thông tin 28°C nắng nhẹ, đưa ra lời khuyên trang phục.\n* **Final Answer**: *\"Thời tiết Hà Nội hôm nay 28°C, nắng nhẹ. Bạn "
+              }
+            ]
+          }
+        ],
+        "code_examples": [
+          {
+            "file": "README.md",
+            "language": "text",
+            "code": "📁 Day-3-Lab-Chatbot-vs-react-agent-E402/\n├── 📄 README.md                 <-- 📘 Tổng quan bài Lab & Thang điểm\n├── 📄 .env.example              <-- 🔑 File mẫu API Key\n├── 📄 requirements.txt          <-- 📦 Thư viện cần cài đặt\n│\n├── 📁 config/                   <-- 🛠️ CẤU HÌNH & DỮ LIỆU\n│   └── 📄 test_cases.json       <-- 🟢 [Role 1] Bộ đề 5 Test Cases thử thách AI\n│\n├── 📁 src/                      <-- 💻 MÃ NGUỒN PYTHON (BOILERPLATE)\n│   ├── 📄 tools.py              <-- 🛠️ [Role 2] Khai báo các công c"
+          },
+          {
+            "file": "README.md",
+            "language": "mermaid",
+            "code": "timeline\n    title ⏱️ KỊCH BẢN THỰC HÀNH LAB 3 (Tổng thời lượng: 150 phút)\n    Mốc 1 (20 phút) : Định hình & Đánh giá Agentic Fit : Chọn bài toán & Lập bảng chấm điểm Scoring Matrix\n    Mốc 2 (30 phút) : Baseline Chatbot & Khai báo Tool : Dựng Chatbot gốc & Viết Tool Specs + 5 Test Cases\n    Mốc 3 (60 phút) : ReAct Loop & Safeguards : Viết Prompt, lắp Agent, cài Phanh Guardrails & Chạy Test\n    Mốc 4 (40 phút) : Tương tác liên nhóm & Hybrid Pattern : Cross-Audit (Tấn công/Phòng thủ) & Vẽ Flowcha"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "language": "bash",
+            "code": "cd Day-3-Lab-Chatbot-vs-react-agent-E402\npython -m venv .venv\nsource .venv/bin/activate        # Windows PowerShell: .venv\\Scripts\\Activate.ps1\npython -m pip install --upgrade pip\npython -m pip install -r requirements.txt\ncp .env.example .env"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "language": "bash",
+            "code": "python src/app.py"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "language": "mermaid",
+            "code": "flowchart LR\n    U[\"User query (config/test_cases.json)\"] --> C[\"Chatbot hoặc ReAct Agent (src/app.py)\"]\n    C --> P[\"LLM Provider / System Prompt (src/prompts.py)\"]\n    C --> X[\"Parse Action (Thought -> Action)\"]\n    X --> R[\"Tool Registry (src/tools.py)\"]\n    R --> T[\"Tool function (get_weather, search_flights...)\"]\n    T --> O[\"Observation (Kết quả thật)\"]\n    O --> C\n    C --> L[\"Telemetry / Trace Log (docs/trace_eval.md)\"]\n    P --> L\n    T --> L"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "language": "text",
+            "code": "system prompt + user message → một LLM call → final response (không gọi Tool)"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "language": "python",
+            "code": "# Mẫu tool chuẩn trong src/tools.py\ndef get_weather(location: str) -> str:\n    \"\"\"Tra cứu thời tiết hiện tại của một thành phố.\"\"\"\n    loc_lower = location.lower()\n    if \"hà nội\" in loc_lower:\n        return \"Thời tiết Hà Nội: 28°C, Nắng nhẹ, Độ ẩm 65%.\"\n    return f\"LỖI: Không tìm thấy dữ liệu thời tiết cho địa điểm '{location}'.\""
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "language": "text",
+            "code": "Question: Thời tiết Hà Nội hôm nay thế nào và có chuyến bay nào đi Hà Nội ngày mai không?\n\nThought: Cần kiểm tra thời tiết Hà Nội trước.\nAction: get_weather[\"Hà Nội\"]\nObservation: Thời tiết Hà Nội: 28°C, Nắng nhẹ, Độ ẩm 65%.\n\nThought: Tiếp theo cần tra cứu chuyến bay đi Hà Nội ngày mai.\nAction: search_flights[\"TP.HCM\", \"Hà Nội\"]\nObservation: Chuyến bay VN123 (08:00) - Giá: 1,500,000 VNĐ.\n\nThought: Tôi đã có đủ thông tin về thời tiết và chuyến bay.\nFinal Answer: Thời tiết Hà Nội hôm nay 28°C nắng"
+          }
+        ],
+        "key_sections": [
+          {
+            "file": "README.md",
+            "heading": "💯 4. CƠ CHẾ CHẤM ĐIỂM  (SCORING RUBRIC)",
+            "content": "| Tiêu chí                                |  Trọng số  | Mô tả chi tiết                                                                                                             | Bằng chứng kiểm tra (Artifacts)                                        |\n| :---------------------------------------- | :-----------: | :---------------------------------------------------------------------------------------------------------------------------- | :------------------------------------------------------"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "heading": "1. Setup và hiểu kiến trúc",
+            "content": ":::goal{title=\"Repo chạy, kiến trúc rõ\"}\nBạn có repo `Day-3-Lab-Chatbot-vs-react-agent-E402` trên máy, môi trường sẵn sàng, hiểu vai trò từng thành phần và phân vai nhóm 5-6 người.\n:::"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "heading": "3. Thiết kế và test tool",
+            "content": ":::goal{title=\"Tool chạy đúng, test pass — trước khi gắn Agent\"}\nViết các tool deterministic trong src/tools.py, có contract rõ ràng và xử lý error an toàn.\n:::"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "heading": "Tại sao test tool riêng trước?",
+            "content": "Nếu gắn tool chưa test vào Agent rồi Agent chạy sai ➔ Bạn không biết lỗi nằm ở Tool hay nằm ở Agent. Test riêng tool trước giúp loại bỏ hoàn toàn một nguồn lỗi!"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "heading": "Tool contract — 8 câu hỏi chuẩn",
+            "content": "| Field                     | Câu hỏi chuẩn hóa                                                               |\n| :------------------------ | :---------------------------------------------------------------------------------- |\n| **Name**            | Tên duy nhất, rõ nghĩa? (Ví dụ:`get_weather`, `search_flights`)           |\n| **Purpose**         | Khi nào nên dùng, khi nào không?                                               |\n| **Input schema**    | Field nào required, type gì? (`location: st"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "heading": "Bạn làm (Role 2 - Tool Engineer):",
+            "content": "1. Mở file `src/tools.py` — implement các hàm tool (Ví dụ: `get_weather`, `search_flights` hoặc các tool theo chủ đề tự chọn).\n2. Thêm **Docstring / Schema** đầy đủ cho từng hàm.\n3. Bắt lỗi an toàn: Nếu địa điểm không tồn tại ➔ Trả về `\"LỖI: Không tìm thấy thông tin...\"` thay vì quăng lỗi crash chương trình.\n\n```python"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "heading": "Mẫu tool chuẩn trong src/tools.py",
+            "content": "def get_weather(location: str) -> str:\n    \"\"\"Tra cứu thời tiết hiện tại của một thành phố.\"\"\"\n    loc_lower = location.lower()\n    if \"hà nội\" in loc_lower:\n        return \"Thời tiết Hà Nội: 28°C, Nắng nhẹ, Độ ẩm 65%.\"\n    return f\"LỖI: Không tìm thấy dữ liệu thời tiết cho địa điểm '{location}'.\"\n```\n\n:::checkpoint{title=\"Hoàn thành khi\"}\n[ ] Các tool trong `src/tools.py` chạy thử độc lập pass 100%, không crash khi nhập sai tham số.\n[ ] Mỗi tool có docstring mô tả input/output/error contract rõ"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "heading": "6. Evaluation, report và nộp bài",
+            "content": ":::goal{title=\"So sánh công bằng, nộp bài sạch sẽ lên GitHub\"}\nChạy bộ Test Cases trên cả Chatbot Baseline và ReAct Agent, hoàn thiện báo cáo docs/trace_eval.md và push code sạch lên GitHub.\n:::"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "heading": "Rubric đánh giá 0–2 điểm mỗi case",
+            "content": "| Tiêu chí                    | 0 điểm                | 1 điểm                  | 2 điểm                              |\n| :---------------------------- | :---------------------- | :------------------------ | :------------------------------------ |\n| **Factual correctness** | Sai / Bịa đặt        | Đúng một phần         | Đúng hoàn toàn                    |\n| **Grounding**           | Không có bằng chứng | Bằng chứng thiếu       | Trích dẫn Observation rõ ràng     |\n| **Tool selection**      | Gọ"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "heading": "Kiểm tra Bảo mật & Nộp bài (Security Check & Submission)",
+            "content": "1. **Kiểm tra `.gitignore`**: Đảm bảo `.env`, `__pycache__/` không bị đẩy lên Git.\n2. **Đẩy code lên GitHub**:\n   ```bash\n   git add .\n   git commit -m \"Hoan thanh Lab 03: Chatbot vs ReAct Agent E402\"\n   git push origin main\n   ```\n3. **Nộp link Repository**: Gửi link repo GitHub cho Giảng viên/Coach kiểm tra.\n\n---"
+          },
+          {
+            "file": "docs/CODELAB.md",
+            "heading": "📋 CHECKLIST ARTIFACTS BẮT BUỘC KHI NỘP BÀI",
+            "content": "- [X] 📘 [README.md](file:///c:/Users/Admin/Documents/VinUni/LabCoachVin/LabKeyCoach/Day-3-Lab-Chatbot-vs-react-agent-E402/README.md) — Tổng quan kiến trúc & Rubric chấm điểm.\n- [X] 📋 [docs/PHAN_CONG_CONG_VIEC.md](file:///c:/Users/Admin/Documents/VinUni/LabCoachVin/LabKeyCoach/Day-3-Lab-Chatbot-vs-react-agent-E402/docs/PHAN_CONG_CONG_VIEC.md) — Sổ tay phân công 5 Roles & Checklist theo mốc.\n- [X] 💡 [docs/DANH_SACH_DE_TAI.md](file:///c:/Users/Admin/Documents/VinUni/LabCoachVin/LabKeyCoach/Day-3-La"
+          },
+          {
+            "file": "docs/PHAN_CONG_CONG_VIEC.md",
+            "heading": "📋 SỔ TAY PHÂN CÔNG & CHECKLIST THỰC HÀNH (ZERO-CONFLICT WORKFLOW)",
+            "content": "> 💡 **Hướng dẫn**: Mỗi thành viên mở đúng file được phân công trong thư mục dự án và thực hiện checklist theo từng Mốc.\n\n---"
+          },
+          {
+            "file": "docs/PHAN_CONG_CONG_VIEC.md",
+            "heading": "⏱️ 2. CHECKLIST THỰC HÀNH THEO 4 MỐC",
+            "content": ""
+          },
+          {
+            "file": "docs/PHAN_CONG_CONG_VIEC.md",
+            "heading": "📍 MỐC 2: Baseline Chatbot & Khai báo Tool Specs (30 phút)",
+            "content": "*Mục tiêu: Thấy rõ hạn chế của Chatbot gốc và chuẩn hóa công cụ cho Agent.*\n\n- [ ] **Role 1**: Viết bộ **Test Cases** vào file `config/test_cases.json` (câu đơn giản, câu multi-step, câu bẫy).\n- [ ] **Role 2**: Dùng AI bổ sung Docstring / Mô tả chuẩn cho các hàm trong `src/tools.py`.\n- [ ] **Role 3**: Soạn `CHATBOT_BASELINE_PROMPT` trong file `src/prompts.py`.\n- [ ] **Role 4 (Đầu mối Lắp ráp)**: Gõ `git pull` để kéo file của Role 1, 2, 3 về máy ➔ Vibe Code nối `run_baseline_chatbot()` trong `src"
+          },
+          {
+            "file": "docs/trace_eval.md",
+            "heading": "🎯 1. BẢNG CHẤM ĐIỂM AGENTIC FIT (SCORING MATRIX)",
+            "content": "| Tiêu chí | Điểm (1-5) | Lý do đánh giá |\n| :--- | :---: | :--- |\n| 🧠 **Multi-step Reasoning** | `4/5` | Cần suy luận từ tra cứu thời tiết đến chọn trang phục. |\n| 🛠️ **Tool Interaction** | `5/5` | Cần tra cứu dữ liệu thời gian thực qua API thời tiết/chuyến bay. |\n| 🔀 **Dynamic Decision** | `4/5` | Kết quả bước trước quyết định hành động bước sau. |\n| ⏳ **Long Horizon** | `3/5` | Quy trình gồm 2-3 bước xử lý ngắn. |\n| **TỔNG ĐIỂM FIT** | **16/20** | **KẾT LUẬN: BÀI TOÁN RẤT NÊN DÙNG REACT AGENT"
+          }
+        ]
+      }
+    }
+  ],
+  "rounds": 2
+}

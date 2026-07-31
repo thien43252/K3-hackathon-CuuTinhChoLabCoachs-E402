@@ -1,0 +1,37 @@
+{
+  "case_id": "08",
+  "title": "Admin upload tài liệu bài lab",
+  "input": "Upload bài lab mới: LAB06, tên 'API Gateway', loại nhóm, mô tả: Xây dựng API Gateway pattern",
+  "context": {
+    "user_id": "U_ADMIN",
+    "channel_type": "general",
+    "group_id": null,
+    "lab_id": "3",
+    "members": []
+  },
+  "applies": "Đúng workflow",
+  "status": "answered",
+  "assistant_text": "Đã tạo phòng nhóm cho bài lab mới: **LAB06 - API Gateway**. Bạn có thể tham gia phòng nhóm tại kênh **#group-lab06---api-gateway**. \n\nBây giờ bạn có thể bắt đầu thảo luận và phân công công việc cho nhóm nhé!",
+  "tool_events": [
+    {
+      "tool": "create_group_room",
+      "args": {
+        "room_name": "LAB06 - API Gateway",
+        "member_ids": [
+          "U_ADMIN"
+        ],
+        "is_private": true
+      },
+      "result": {
+        "status": "success",
+        "room_id": "129811729763325709",
+        "discord_channel_id": "129811729763325709",
+        "channel_name": "group-lab06---api-gateway",
+        "added_members": [
+          "U_ADMIN"
+        ]
+      }
+    }
+  ],
+  "rounds": 2
+}

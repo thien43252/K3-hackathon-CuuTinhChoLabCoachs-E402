@@ -1,0 +1,17 @@
+{
+  "case_id": "07",
+  "title": "Học viên hỏi ví dụ code từ tài liệu",
+  "input": "Cho mình ví dụ code kết nối database PostgreSQL trong bài giảng",
+  "context": {
+    "user_id": "U_STU1",
+    "channel_type": "general",
+    "group_id": null,
+    "lab_id": "3",
+    "members": []
+  },
+  "applies": "Đúng có căn cứ",
+  "status": "answered",
+  "assistant_text": "Rất tiếc, mình không tìm thấy thông tin này trong tài liệu bài lab hôm nay. Bạn có thể tham khảo tài liệu chính thức hoặc nhờ sự hỗ trợ từ Giảng viên/TA nhé.",
+  "tool_events": [],
+  "rounds": 1
+}
