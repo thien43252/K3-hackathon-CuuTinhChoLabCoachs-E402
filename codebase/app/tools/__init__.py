@@ -1,51 +1,30 @@
 """
 Package codebase/app/tools
-Export tập trung toàn bộ 15 Agent Tools cho AI Agent.
+Export tập trung toàn bộ 15 Agent Tools cho AI Agent (phiên bản real implementation).
 """
 
-from app.tools.admin_tools import (
+from app.tools.db_tools import (
     upload_lab_material,
-    codebase_indexer,
-    RAG_search,
-    UploadLabMaterialInput,
-    CodebaseIndexerInput,
-    RAGSearchInput,
+    get_user_context,
+    assign_task,
+    track_group_progress,
+    extend_deadline,
+    fetch_peer_solution
 )
 
-from app.tools.platform_tools import (
-    get_user_context,
+from app.tools.ai_tools import (
+    codebase_indexer,
+    RAG_search,
+    parse_lab_requirements,
+    generate_reflection,
+    analyze_student_issue
+)
+
+from app.tools.discord_tools import (
     create_group_room,
     send_message,
     send_notification,
-    GetUserContextInput,
-    CreateGroupRoomInput,
-    SendMessageInput,
-    SendNotificationInput,
-)
-
-from app.tools.task_tools import (
-    parse_lab_requirements,
-    assign_task,
-    track_group_progress,
-    generate_reflection,
-    ParseLabRequirementsInput,
-    AssignTaskInput,
-    TrackGroupProgressInput,
-    GenerateReflectionInput,
-)
-
-from app.tools.scheduler_tools import (
-    schedule_reminder,
-    extend_deadline,
-    ScheduleReminderInput,
-    ExtendDeadlineInput,
-)
-
-from app.tools.troubleshooting_tools import (
-    analyze_student_issue,
-    fetch_peer_solution,
-    AnalyzeStudentIssueInput,
-    FetchPeerSolutionInput,
+    schedule_reminder
 )
 
 ALL_TOOLS = {
